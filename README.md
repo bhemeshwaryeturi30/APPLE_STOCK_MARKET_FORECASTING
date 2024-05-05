@@ -11,3 +11,5 @@ Training the model involves fitting it to the training data and validating it us
 Finally, the trained model can be used for making predictions on unseen data to forecast future stock prices.
 
 This project demonstrates the application of deep learning techniques, particularly LSTM neural networks, for stock market prediction and forecasting, providing insights into potential future trends in stock prices for Apple Inc.
+
+Link to dataset using API: https://www.tiingo.com/documentation/general/overview
