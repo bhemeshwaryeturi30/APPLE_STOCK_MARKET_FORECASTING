@@ -10,7 +10,7 @@ Training the model involves fitting it to the training data and validating it us
 
 Finally, the trained model can be used for making predictions on unseen data to forecast future stock prices.
 
-<img src="https://github.com/bhemeshwaryeturi30/APPLE_STOCK_MARKET_FORECASTING/blob/main/Visualisation-3.png" width="100%" height="100%">
+<img src="https://github.com/bhemeshwaryeturi30/APPLE_STOCK_MARKET_FORECASTING/blob/main/Visualisation-3.png" width="70%" height="70%">
 
 
 
