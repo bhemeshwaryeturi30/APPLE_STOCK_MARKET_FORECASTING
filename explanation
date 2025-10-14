@@ -1,1 +1,23 @@
+Here’s a clean, paragraph-style README.md for your Aetna Illinois BIN/BCN Group Analysis SQL workflow — written to match the concise tone and structure of your previous Telepharmacy README templates:
 
+⸻
+
+Aetna Illinois BIN/BCN Group Analysis
+
+This project creates a data pipeline in Snowflake to identify and analyze Aetna Illinois prescription claims, digital pharmacy orders, CarePass enrollments, and delivery trends. It integrates multiple data sources including NCPDP claims, OMS order data, CarePass membership, and delivery logistics, and produces analytical outputs used to understand delivery behavior and patient engagement across key store locations.
+
+The process begins by defining start and end date parameters to filter data dynamically, typically from January 1, 2025 to the current date. The initial table, AETNA_IL_BIN_BCN_GROUP, lists specific BIN, PCN, and Group combinations associated with Aetna Illinois plans. Using this reference, the script extracts prescription claim data from the NCPDP ACV transaction fact table, joining with the Condor plan dimension to isolate processed, primary insurance claims (split bill code = 1) for Aetna Illinois members. The resulting dataset, AETNA_IL_RX, represents unique, valid pharmacy transactions associated with Aetna Illinois.
+
+Next, order data is sourced from OMS (Order Management System) through the YFS_ORDER_HEADER, YFS_ORDER_LINE, YFS_ORDER_RELEASE_STATUS, and YFS_SHIPMENT tables. This information is joined with customer rewards and courier details to build the RX_ORDERS dataset. Only completed, active orders within the defined timeframe are included. The script also pulls CarePass enrollment data from CDP tables to identify whether the customer was an active CarePass member at the time of order.
+
+Store-level context is added by defining NYC store IDs in a dedicated table (NYC_STORES), enabling downstream filtering for New York City–specific Next-Day Delivery (NDD) analysis. Delivery information is then collected from the ORDER_DELIVERY and ORDER_DELIVERY_ITEM tables, capturing details such as courier name, SLA codes, cancellation reasons, delivery fee overrides, and timestamps for order and delivery completion. This stage produces the RX_DELV_INFO table, summarizing delivery activity and timelines.
+
+All these components are then joined into the FINAL_TABLE, which unifies order data, delivery information, CarePass membership, and store geography. Derived fields categorize orders by entry point (Digital Entry vs Colleague Initiated), identify CarePass orders, free deliveries, colleague-override transactions, and NYC NDD orders, giving a comprehensive view of customer and operational behavior. Prescription-level details are appended from the PRESCRIPTION_FILL table to link each order back to its patient ID, NDC, and plan number, forming the PATIENT_AND_SCRIPT_INFO table — the core dataset for reporting.
+
+Two primary analytical outputs are generated from this dataset. The first summarizes daily delivery volumes, comparing total versus free deliveries for digital orders. The second extracts patient-level details, listing member names, birth dates, order numbers, delivery flags, and CarePass identifiers, providing granular visibility into member engagement.
+
+In summary, this Snowflake SQL workflow builds a robust, end-to-end dataset that traces the path from Aetna Illinois claims through digital pharmacy orders and deliveries to CarePass membership linkage. It enables detailed analysis of delivery trends, patient participation, and free-delivery programs, supporting data-driven decisions for retail operations, logistics optimization, and member engagement strategies.
+
+⸻
+
+Would you like me to add a short section at the end (like your earlier Telepharmacy README) explaining how these tables feed Tableau dashboards or analytics reports?
