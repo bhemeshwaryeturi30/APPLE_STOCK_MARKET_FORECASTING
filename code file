@@ -1,1 +1,126 @@
 
+Here’s a clean, structured, and Snowflake-focused README.md written in the same format as your earlier project templates (Compounding Drugs, Aetna IL, Automation Script Volume, etc.) — clear, professional, and easy to follow:
+
+⸻
+
+Central Fill Queue Depth Analysis
+
+This repository contains the Snowflake SQL workflows that support the monitoring and reporting of Central Fill (CF) queue depth and daily prescription processing volume. The scripts collectively track queue status, fill activity, and operational throughput across Central Fill locations to ensure accurate capacity analysis and real-time performance visibility.
+
+⸻
+
+Overview
+
+The Central Fill Queue Depth framework automates ingestion, transformation, and analysis of queue-level prescription data from the CF_QDEPTH_MASTER table.
+
+It includes:
+	•	A stored procedure (LOAD_CF_QDEPTH_DATA_PROC) that loads and refreshes queue depth data daily.
+	•	Analytical scripts (AllQueueDepthVolume.sql, Previous Day Volume.sql) to measure queue size, processed volume, and fulfillment timeliness.
+
+The data is sourced primarily from CORE_RX.CURATED_SCRIPT and related Central Fill operational tables, ensuring alignment with current prescription fill and shipment activity.
+
+⸻
+
+Setup and Variables
+
+Before running the scripts, ensure that the Snowflake session is connected to the following schemas and has proper write access to the sandbox layer:
+	•	DL_RX_OPERATION.RX_OPS_SANDBOX – destination for CF queue data and intermediate tables
+	•	CORE_RX.CURATED_SCRIPT – source for prescription fill and status data
+	•	CORE_RX.CURATED_PRODUCT – provides drug identifiers (NDC)
+	•	CORE_RX.CURATED_LOCATION – for store mapping and CF associations
+
+All timestamps are standardized to Eastern Time (EST) using CONVERT_TIMEZONE('UTC', 'America/New_York') within the stored procedure.
+
+⸻
+
+Core Tables and Queries
+
+1. QDepth_master_table_creation.sql
+
+Purpose: Creates and populates the CF_QDEPTH_MASTER table using the procedure LOAD_CF_QDEPTH_DATA_PROC().
+
+Process Flow:
+	•	Extracts recent prescription fill data (RXC_PRESCRIPTION_FILL_RT) and joins it with Central Fill assignments (CENTRAL_FILL_RX_ASSIGNMENT).
+	•	Filters valid Central Fill stores and prescriptions using CF_ACTIVE_STORES.
+	•	Excludes reversed fills (FILL_STATE_CD = 3).
+	•	Derives the latest version of each record by ranking (RANK() over store, RX, and fill).
+	•	Maps fill status to descriptive queue names:
+	•	Status 1–4,32 → QP (Queue Processing)
+	•	Status 122–123 → QV (Quality Verification)
+	•	Captures recent operational timestamps:
+	•	LAST_READY_TO_SHIP_TS
+	•	LAST_QV2_ENTER_TS
+	•	LAST_SHIPPED_TS
+	•	LAST_QP_TS
+	•	Inserts enriched and ranked data into CF_QDEPTH_MASTER for downstream analysis.
+
+Output Columns (sample):
+	•	CF_STORE_NBR, RX_NBR, FILL_NBR, FILL_STATUS_CD, CENTRAL_FILL_STATUS_CD, PROMISE_TS
+	•	Queue flags: IS_IN_HOLDING_QUEUE_IND, HOLDING_QUEUE_IN_TS, HOLDING_QUEUE_OUT_TS
+	•	Derived timestamps: LAST_READY_TO_SHIP_TS, LAST_QP_TS, etc.
+	•	RECORD_TS_EST (snapshot timestamp in EST)
+
+Procedure Execution:
+
+CALL LOAD_CF_QDEPTH_DATA_PROC();
+
+Upon success, the procedure returns:
+'CF QDEPTH Procedure executed successfully'
+
+⸻
+
+2. AllQueueDepthVolume.sql
+
+Purpose: Retrieves the most recent snapshot of queue depth for all Central Fill stores and filters records based on fill and queue criteria.
+
+Key Logic:
+	•	Pulls only the latest records (DENSE_RANK() by RECORD_TS_EST).
+	•	Filters active fill statuses (1,2,3,4,32,122,123) for meaningful queue positions.
+	•	Excludes prescriptions in invalid or closed statuses (RR, R, I, X).
+	•	Restricts to fills with a Promise Date within the last 4 days.
+	•	Removes any items currently in holding queues or already released.
+
+Use Case:
+Provides near-real-time visibility into Central Fill queue depth across stores, supporting operational dashboards and staffing forecasts.
+
+⸻
+
+3. Previous Day Volume.sql
+
+Purpose: Calculates the number of Central Fill prescriptions processed on the previous business day, dynamically adjusting for weekends.
+
+Logic Overview:
+	•	Selects the latest snapshot from CF_QDEPTH_MASTER.
+	•	Determines the worked date based on available timestamps:
+	•	Prefer LAST_READY_TO_SHIP_TS; otherwise fallback to LAST_SHIPPED_TS if it aligns with LAST_QP_TS.
+	•	Counts unique prescriptions (STORE_NBR, RX_NBR, FILL_NBR).
+	•	Includes logic to adjust for Sundays (DAYOFWEEKISO(CURRENT_DATE()) = 1 → use Friday–Saturday range).
+	•	Filters fills with valid or pending Central Fill statuses ('P','A' or NULL).
+
+Output:
+	•	CF_STORE_NBR – Central Fill location
+	•	WORKED_DT – Date prescription was processed
+	•	CNT – Count of fills processed
+
+This metric is used for daily throughput reporting and performance KPIs for Central Fill operations.
+
+⸻
+
+Output and Usage
+
+The workflow produces the following primary outputs:
+	•	CF_QDEPTH_MASTER – Master repository table with latest queue depth snapshot.
+	•	AllQueueDepthVolume report – Current queue positions for all CF stores (last 4 days).
+	•	Previous Day Volume report – Processed volume by store and date.
+
+These datasets are typically consumed by Tableau or Power BI dashboards to monitor queue congestion, identify bottlenecks, and measure daily fill performance.
+
+⸻
+
+Summary
+
+The Central Fill Queue Depth Analysis system provides an automated, scalable solution for tracking and optimizing prescription processing across Central Fill operations.
+
+By combining real-time ingestion, status-based filtering, and historical volume analysis, it enables data-driven decision-making around queue management, capacity planning, and operational performance improvement.
+
+⸻
