@@ -1,10 +1,4 @@
 
-Here’s a clean, structured, and Snowflake-focused README.md written in the same format as your earlier project templates (Compounding Drugs, Aetna IL, Automation Script Volume, etc.) — clear, professional, and easy to follow:
-
-⸻
-
-Central Fill Queue Depth Analysis
-
 This repository contains the Snowflake SQL workflows that support the monitoring and reporting of Central Fill (CF) queue depth and daily prescription processing volume. The scripts collectively track queue status, fill activity, and operational throughput across Central Fill locations to ensure accurate capacity analysis and real-time performance visibility.
 
 ⸻
@@ -104,22 +98,6 @@ Output:
 
 This metric is used for daily throughput reporting and performance KPIs for Central Fill operations.
 
-⸻
-
-Output and Usage
-
-The workflow produces the following primary outputs:
-	•	CF_QDEPTH_MASTER – Master repository table with latest queue depth snapshot.
-	•	AllQueueDepthVolume report – Current queue positions for all CF stores (last 4 days).
-	•	Previous Day Volume report – Processed volume by store and date.
-
-These datasets are typically consumed by Tableau or Power BI dashboards to monitor queue congestion, identify bottlenecks, and measure daily fill performance.
-
-⸻
-
-Summary
-
-The Central Fill Queue Depth Analysis system provides an automated, scalable solution for tracking and optimizing prescription processing across Central Fill operations.
 
 By combining real-time ingestion, status-based filtering, and historical volume analysis, it enables data-driven decision-making around queue management, capacity planning, and operational performance improvement.
 
