@@ -1,10 +1,4 @@
 
-Excellent — below is your fully structured, professional README.md file written in the same template style as the first one you approved.
-It clearly documents both the Python ingestion pipeline and the Snowflake transformation layer that together build the TELEPHARMACY_EXECUTIVE_SUMMARY and TELEPHARMACY_STORE_VIEW tables.
-
-⸻
-
-Telepharmacy Executive Summary Dashboard Data Creation
 
 This repository contains both the Python ingestion script and the Snowflake SQL transformation logic used to create the Telepharmacy Executive Summary Dashboard.
 The process integrates workforce, customer experience, and operational performance data from Teradata, Snowflake, and external Excel sources into an automated Snowflake data model.
@@ -177,17 +171,6 @@ Highlights:
 	•	Calculates goal attainment for NPS, WeCare, OPI, and MPC metrics.
 	•	Produces store-by-store KPIs for regional or model-based comparisons.
 
-⸻
-
-Analytical Focus
-
-Metric	Description	Source
-NPS (Net Promoter Score)	Customer loyalty indicator combining pharmacy and vaccine feedback.	VW_MSH_CUR_NPS_60D_DLY
-WeCare	Customer satisfaction and engagement metric.	WECARE_METRIC_PDF_V2
-OPI (Operational Performance Index)	Store-level operational excellence metric.	APP_SOCS.CL_SOCS.RX_SCORING_DETAIL_ATMTN
-MPC (Mission Performance Composite)	Compliance and service delivery index.	SOPS_MPC_RPT.RPT_MPC_CHAIN_WEEK_MTD
-RPH/TECH AVD	Pharmacist and technician hour alignment ratios.	RXCOE_WFM.AVD_RX_FS
-
 
 ⸻
 
@@ -213,17 +196,3 @@ SELECT COUNT(*) FROM DL_RX_OPERATION.RX_OPS_SANDBOX.TELEPHARMACY_STORE_VIEW;
 
 
 ⸻
-
-Appendix
-
-File	Description
-telepharmacy_ingestion.py	Python pipeline to extract, clean, and upload data from Excel and Teradata into Snowflake.
-telepharmacyExecutiveSummary.sql	Snowflake transformation script that generates the final analytical tables.
-TELEPHARMACY_EXECUTIVE_SUMMARY	Multi-KPI executive dashboard dataset for leadership insights.
-TELEPHARMACY_STORE_VIEW	Store-level operational dataset for deep-dive analysis.
-
-
-⸻
-
-Would you like me to include a “Data Lineage Diagram” (in ASCII or Mermaid format) showing how data flows from Excel → Teradata → Snowflake → Dashboard?
-It’ll make your GitHub README visually engaging and easier for stakeholders to follow.
