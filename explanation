@@ -1,140 +1,169 @@
-Here’s your README.md written in the same structured, professional, and Snowflake–Teradata hybrid style as your earlier SQL documentation (following the original template from your first request):
+AllQueueDepthVolume.sql code:
+WITH CF_LATEST AS(
+SELECT 
+*
+FROM DL_RX_OPERATION.RX_OPS_SANDBOX.CF_QDEPTH_MASTER
+WHERE FILL_STATUS_CD IN (1,2,3,4,32,122,123)
+AND CF_STORE_NBR IS NOT NULL
+QUALIFY DENSE_RANK() OVER (ORDER BY RECORD_TS_EST DESC) = 1
+)
+SELECT 
+*
+FROM CF_LATEST
+WHERE ( CENTRAL_FILL_STATUS_CD NOT IN ('RR','R','I','X')) AND TO_DATE(PROMISE_TS) >= CURRENT_DATE() - 4 
+AND (IS_IN_HOLDING_QUEUE_IND IS NULL OR IS_IN_HOLDING_QUEUE_IND ='N'
+OR HOLDING_QUEUE_OUT_TS IS NOT NULL)
 
-⸻
+Previous Day volume.sql code:
+WITH CF_LATEST AS(
+SELECT *
+FROM DL_RX_OPERATION.RX_OPS_SANDBOX.CF_QDEPTH_MASTER
+QUALIFY DENSE_RANK() OVER (ORDER BY RECORD_TS_EST DESC) = 1
+)
+SELECT 
+CF_STORE_NBR,
+CASE 
+    WHEN LAST_READY_TO_SHIP_TS IS NOT NULL THEN DATE(LAST_READY_TO_SHIP_TS)
+    WHEN LAST_READY_TO_SHIP_TS IS NULL AND LAST_SHIPPED_TS IS NOT NULL AND LAST_QP_TS IS NOT NULL 
+    AND DATE(LAST_QP_TS) = DATE(LAST_SHIPPED_TS) THEN DATE(LAST_SHIPPED_TS)
+    ELSE NULL
+END AS WORKED_DT,
+COUNT( DISTINCT STORE_NBR,RX_NBR,FILL_NBR) AS CNT
+FROM CF_LATEST
+WHERE (LAST_CENTRAL_FILL_STATUS_CD IN ('P','A') OR LAST_CENTRAL_FILL_STATUS_CD IS NULL)
+AND case when DAYOFWEEKISO(CURRENT_DATE()) =1 then WORKED_DT between CURRENT_DATE() -3 and CURRENT_DATE() -1 else WORKED_DT = CURRENT_DATE() -1 end -- Edit this if you need more days data
+GROUP BY ALL
+ORDER BY 2,1
 
-Patient Profile Deactivation Workflow
-
-This repository contains the SQL scripts and logic used to identify, evaluate, and deactivate obsolete or inactive patient profiles from pharmacy systems. The workflow is executed across both Snowflake (for recent data validation and enrichment) and Teradata (for legacy data filtering and candidate selection) environments.
-
-The primary objective of this process is to maintain an accurate and compliant patient database by identifying profiles that are inactive, duplicative, or no longer valid while retaining active or clinically relevant records.
-
-⸻
-
-Overview
-
-The Patient Profile Deactivation process ensures that duplicate or outdated patient profiles are systematically identified and safely deactivated.
-
-The workflow evaluates multiple factors — including fill activity, age, caregiving roles, allergies, immunization history, condition data, patient notes, and Rx Connect ties — to determine if a patient record is still active or can be safely marked for deactivation.
-
-This process is executed in two stages:
-	1.	Snowflake Stage (PatientProfileDeactivation.sql):
-Applies clinical and operational filters using curated data sources to validate which profiles meet deactivation criteria.
-	2.	Teradata Stage (Updated_Deactivation_Step1_SQL_Block.sql):
-Builds multi-step candidate tables to finalize source (inactive) and target (active) profiles for deactivation.
-
-⸻
-
-Setup and Data Sources
-
-Both Snowflake and Teradata environments must have access to the following schemas and tables:
-
-Snowflake Sources
-	•	CORE_RX.CURATED_PERSON.* — patient, allergy, and condition details
-	•	CORE_RX.CURATED_SCRIPT.* — prescription, fill, and note data
-	•	DL_RX_OPERATION.RX_OPS_SANDBOX.* — working sandbox tables
-	•	CORE_RX.CURATED_PRODUCT.* — immunization and drug crosswalk tables
-
-Teradata Sources
-	•	IDW_RX_OPERATIONS_S_BC — primary operational scripts, patient, and event tables
-	•	IDW_PRODUCT_DEVELOPMENT_S_BC — caregiving relationships
-	•	IDW_COMMON — drug and reference tables
-	•	RXCOE_PMI — final deactivation tables and reporting outputs
-
-⸻
-
-Core Logic and Tables
-
-1. Snowflake: PatientProfileDeactivation.sql
-
-This script identifies profiles eligible for deactivation by applying the following rules:
-	•	No prescription pickup, fill, or specialty activity in the last 36 months.
-	•	Patient is 18 years or older.
-	•	Patient is not an active caregiver or caregivee.
-	•	No confirmed allergy, condition, or vaccination data.
-	•	No active or meaningful patient notes (excluding “DO NOT USE”, “DUPLICATE PROFILE”, etc.).
-	•	Not tied to an active RxConnect profile.
-	•	No PMP comments or pending prescriptions on hold.
-
-Key Temporary Tables:
-	•	RXTIED – Identifies profiles linked to RxConnect accounts.
-	•	CG_IND – Flags caregiver/caregivee relationships.
-	•	PATIENT_NOTES – Counts valid patient notes and excludes invalid or duplicate entries.
-	•	ALLERGY_CHECK – Detects patients with confirmed allergy codes.
-	•	CONDITION – Identifies patients with recorded medical conditions.
-	•	IMMUNIZATION_COUNT – Flags patients with vaccination history.
-	•	REC_ACTV / REC_FILLS – Tracks recent fill activity within 36 months.
-
-All temporary datasets are merged into a final output table:
-DL_RX_OPERATION.RX_OPS_SANDBOX.PATIENT_DEACTIVATION_PROFILES_FINAL_SG
-
-This table consolidates all relevant flags — Rx tie, allergy, note, condition, immunization, activity, and fill indicators — to identify truly inactive profiles.
-
-⸻
-
-2. Teradata: Updated_Deactivation_Step1_SQL_Block.sql
-
-This script executes the legacy patient deactivation framework using volatile tables to isolate, rank, and finalize candidate profiles.
-
-Main Steps:
-
-a) Duplicate Detection
-
-DUPES identifies CVS IDs with multiple active RxC patient IDs, excluding deleted or invalid records.
-
-b) Caregiver and Fill Enrichment
-
-Subsequent tables (DUPES_W_CAREGIVING, DUPES_W_FILL_INFO) append caregiving roles, vaccination flags, ISP fills, and most recent fill/pickup dates.
-
-c) Patient Comment and Rx Tie Validation
-
-Tables such as DUPES_W_PATIENT_COMMENTS and DUPES_W_RX_TIES identify whether a patient has notes, comments, or RxConnect ties that prevent deactivation.
-
-d) Profile Attributes and Activity
-
-DUPES_ALL_INFO aggregates demographic, allergy, condition, and activity data, calculating eligibility flags (e.g., age, allergy info, caregiver status, recent fills).
-
-e) Clinical and Compliance Filters
-
-The script introduces additional validation layers:
-	•	PMP_COMMENTS – identifies PMP notes.
-	•	ON_HOLD_SCRIPTS – flags pending prescriptions.
-	•	CONDITION_DIAGNOSIS – confirms existing diagnoses.
-	•	OBSOLETE – filters already-obsolete records.
-
-f) Deactivation Candidate Selection
-
-The combined dataset (DEACTIVATE_CONDIDATES → DEACTIVATE_CANDIDATES_STEP3) applies strict business rules:
-	•	Must be inactive and eligible (ELIGIBLE = 1, ACTIVE = 0).
-	•	No recent fills, notes, allergies, vaccinations, or conditions.
-	•	Not a minor, caregiver, or Rx-tied.
-	•	No PMP comments or on-hold scripts.
-
-Profiles are ranked by CVS ID to retain one active (target) profile per patient and mark others as inactive (source).
-
-g) Final Output Tables
-	•	RXCOE_PMI.DEACTIVATE_CANDIDATES_STEP5 — Links source and target profiles by CVS ID and DOB for confirmation.
-	•	RXCOE_PMI.DEACTIVATE_CANDIDATES_ALLERGY — Captures associated allergy codes.
-	•	RXCOE_PMI.DEACTIVATE_CANDIDATES_PROFILES — Produces final list with name, DOB, and address details for validation.
-
-⸻
-
-Output and Usage
-
-The combined output identifies inactive or duplicate patient profiles across systems and stores them for further review and safe deactivation.
-
-Key outcomes:
-	•	Reduction of duplicate and outdated profiles across systems.
-	•	Ensured retention of valid, active profiles with clinical data.
-	•	Compliance with privacy, data integrity, and operational standards.
-	•	Integration readiness for automated deactivation workflows.
-
-⸻
-
-Summary
-
-The Patient Profile Deactivation Workflow is an end-to-end SQL-driven process that harmonizes Snowflake and Teradata logic to ensure a clean, accurate, and compliant patient master.
-
-It systematically eliminates inactive or redundant records while protecting active patients and clinical data, ensuring the overall quality and trustworthiness of pharmacy information systems.
-
-⸻
-
+QDepth_master_table_creation.sql code:
+CREATE OR REPLACE PROCEDURE LOAD_CF_QDEPTH_DATA_PROC()
+RETURNS STRING
+LANGUAGE SQL
+EXECUTE AS CALLER
+AS
+$$
+BEGIN
+    -- Add error handling
+    BEGIN
+        -- Multiple CTEs
+        INSERT INTO DL_RX_OPERATION.RX_OPS_SANDBOX.CF_QDEPTH_MASTER
+        WITH CF_SCRIPTS AS (
+        SELECT
+            CF_STR.CF_STORE_NBR, 
+            PF_RT.CREATE_TS,
+            PF_RT.KAFKA_LOAD_TS,
+            PF_RT.LAST_UPDATED_TS,
+            PF_RT.RXC_PRESCRIPTION_FILL_ID,
+            PF_RT.STORE_NBR,
+            PF_RT.FILL_NBR,
+            PF_RT.RX_NBR,
+            PF_RT.CENTRAL_FILL_STATUS_CD,
+            PF_RT.CF_EXPECTED_DELIVERY_TS,
+            PF_RT.CF_STATUS_UPDATED_TS,
+            PF_RT.FILL_TS,
+            PF_RT.FILL_SOURCE_CD,
+            PF_RT.FILL_STATE_CD,
+            PF_RT.FILL_STATUS_CD,
+            PF_RT.NDC,
+            PF_RT.PROMISE_TS,
+            CF_RX.REC_EFF_TS AS CF_RX_REC_EFF_TS,
+            CF_RX.IS_IN_HOLDING_QUEUE_IND,
+            CF_RX.HOLDING_QUEUE_IN_TS,
+            CF_RX.HOLDING_QUEUE_OUT_TS,
+            RANK() OVER(PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ORDER BY PF_RT.KAFKA_LOAD_TS DESC,PF_RT.LAST_UPDATED_TS DESC, PF_RT.CREATE_TS DESC) AS RANK_NUM
+        FROM CORE_RX.CURATED_SCRIPT.RXC_PRESCRIPTION_FILL_RT AS PF_RT
+        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.CF_ACTIVE_STORES AS CF_STR
+            ON PF_RT.STORE_NBR = CF_STR.STORE_NBR
+            AND (TO_DATE(CF_STR.ADD_DATE) <= TO_DATE(PF_RT.KAFKA_LOAD_TS) 
+            OR TO_DATE(CF_STR.ADD_DATE) <= TO_DATE(PF_RT.CREATE_TS))
+        LEFT JOIN CORE_RX.CURATED_SCRIPT.CENTRAL_FILL_RX_ASSIGNMENT AS CF_RX
+            ON PF_RT.RXC_PRESCRIPTION_FILL_ID = CF_RX.PRESCRIPTION_FILL_ID
+        WHERE PF_RT.KAFKA_LOAD_TS::DATE >= CURRENT_DATE() - 60
+        QUALIFY COUNT_IF(PF_RT.CENTRAL_FILL_STATUS_CD IS NOT NULL) OVER (PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ) > 0 
+        AND COUNT_IF(PF_RT.FILL_STATE_CD=3) OVER (PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ) = 0 
+        ),
+        CF_SCRIPTS_LATEST AS (
+        SELECT DISTINCT
+            CF_SCRIPTS.*,
+            DIM_STS.RX_FILL_STATUS_DSC,
+            DIM_CF_STS.CENTRAL_FILL_STATUS_DSC,
+            CASE 
+                WHEN CF_SCRIPTS.FILL_STATUS_CD IN (1,2,3,4,32) THEN 'QP'
+                WHEN CF_SCRIPTS.FILL_STATUS_CD IN (122,123) THEN 'QV'
+            ELSE 'OTHER'
+            END AS QUEUE_NAME
+        FROM CF_SCRIPTS
+        LEFT JOIN CORE_RX.CURATED_SCRIPT.DIM_RX_FILL_STATUS AS DIM_STS
+            ON DIM_STS.RX_FILL_STATUS_CD = CF_SCRIPTS.FILL_STATUS_CD
+        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.DIM_CENTRAL_FILL_STATUS AS DIM_CF_STS
+            ON DIM_CF_STS.CENTRAL_FILL_STATUS_CD = CF_SCRIPTS.CENTRAL_FILL_STATUS_CD
+        WHERE CF_SCRIPTS.RANK_NUM = 1 AND CF_STORE_NBR IS NOT NULL
+        ),
+        CF_SCRIPTS_WORKED AS (
+        SELECT 
+            CF_SCRIPTS.CF_STORE_NBR,
+            CF_SCRIPTS.STORE_NBR,
+            CF_SCRIPTS.RX_NBR,
+            CF_SCRIPTS.FILL_NBR,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 134 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_READY_TO_SHIP_TS,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 123 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_QV2_ENTER_TS,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 132 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_SHIPPED_TS,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD IN (1,2,3,4,32) THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_QP_TS,
+            MAX_BY(CENTRAL_FILL_STATUS_CD,CF_SCRIPTS.KAFKA_LOAD_TS) AS LAST_CENTRAL_FILL_STATUS_CD
+        FROM CF_SCRIPTS
+        WHERE CF_STORE_NBR IS NOT NULL
+        GROUP BY ALL),
+        FINAL AS (
+        SELECT 
+        CONVERT_TIMEZONE('UTC', 'America/New_York', CURRENT_TIMESTAMP()) AS RECORD_TS_EST,
+        CF_SCRIPTS_LATEST.*,
+        CF_SCRIPTS_WORKED.LAST_READY_TO_SHIP_TS,
+        CF_SCRIPTS_WORKED.LAST_QV2_ENTER_TS,
+        CF_SCRIPTS_WORKED.LAST_SHIPPED_TS,
+        CF_SCRIPTS_WORKED.LAST_QP_TS,
+        CF_SCRIPTS_WORKED.LAST_CENTRAL_FILL_STATUS_CD
+        FROM CF_SCRIPTS_LATEST
+        JOIN CF_SCRIPTS_WORKED
+            ON CF_SCRIPTS_WORKED.STORE_NBR = CF_SCRIPTS_LATEST.STORE_NBR
+            AND CF_SCRIPTS_WORKED.RX_NBR = CF_SCRIPTS_LATEST.RX_NBR
+            AND CF_SCRIPTS_WORKED.FILL_NBR = CF_SCRIPTS_LATEST.FILL_NBR
+            AND CF_SCRIPTS_WORKED.CF_STORE_NBR = CF_SCRIPTS_LATEST.CF_STORE_NBR
+        WHERE CF_SCRIPTS_LATEST.LAST_UPDATED_TS::DATE >= CURRENT_DATE() - 3)
+        SELECT
+            RECORD_TS_EST,
+            CF_STORE_NBR,
+            CREATE_TS,
+            KAFKA_LOAD_TS,
+            RXC_PRESCRIPTION_FILL_ID,
+            STORE_NBR,
+            FILL_NBR,
+            RX_NBR,
+            CENTRAL_FILL_STATUS_CD,
+            CF_EXPECTED_DELIVERY_TS,
+            CF_STATUS_UPDATED_TS,
+            FILL_TS,
+            FILL_SOURCE_CD,
+            FILL_STATE_CD,
+            FILL_STATUS_CD,
+            NDC,
+            PROMISE_TS,
+            CF_RX_REC_EFF_TS,
+            IS_IN_HOLDING_QUEUE_IND,
+            HOLDING_QUEUE_IN_TS,
+            HOLDING_QUEUE_OUT_TS,
+            RANK_NUM,
+            RX_FILL_STATUS_DSC,
+            CENTRAL_FILL_STATUS_DSC,
+            QUEUE_NAME,
+            LAST_UPDATED_TS,
+            LAST_READY_TO_SHIP_TS,
+            LAST_QV2_ENTER_TS,
+            LAST_SHIPPED_TS,
+            LAST_QP_TS,
+            LAST_CENTRAL_FILL_STATUS_CD
+        FROM FINAL;
+    END;
+    
+    RETURN 'CF QDEPTH Procedure executed successfully';
+END;
+$$;
