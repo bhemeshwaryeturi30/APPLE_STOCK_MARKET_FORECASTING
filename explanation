@@ -1,9 +1,4 @@
 
-Excellent — based on all the SQL scripts (carryover.sql, operationmetrics.sql, operationmetrics2.sql, spp.sql, shipbySLA.sql, and TotalScriptVolumeFromPnP.sql) and the structure of the previous template, here’s your professionally formatted, GitHub-ready README.md:
-
-⸻
-
-SQL Queries for Central Fill Operations and Performance Dashboard
 
 This repository contains SQL queries used to build the Central Fill Operations and Performance Dashboard, designed to analyze key operational metrics across Teradata and Snowflake data sources.
 The dashboard measures production efficiency, shipping accuracy, SLA adherence, carryover trends, and cost metrics to provide actionable insights for Central Fill (CF) network performance optimization.
@@ -189,58 +184,4 @@ STORE_NBR	Central Fill store number
 Cost Per Package	Average cost per shipment
 SPP	Shipping performance parameter
 
-Purpose:
-Integrates cost efficiency analysis into operational dashboards, allowing correlation of shipping cost vs. SLA performance.
 
-⸻
-
-Analytical Focus
-
-Metric Category	Description	Source Queries
-Operational Efficiency	Measures total fills, shipped scripts, and same-day check-ins.	operationmetrics.sql, operationmetrics2.sql
-Carryover Analysis	Evaluates delayed fills relative to queue cutoffs.	carryover.sql
-SLA Adherence	Monitors on-time shipments and late creations.	shipbySLA.sql
-Shipment Performance	Tracks volume and tracking-level delivery trends.	spp.sql, TotalScriptVolumeFromPnP.sql
-Cost Efficiency	Integrates shipping cost per package metrics for budget optimization.	Excel source
-
-
-⸻
-
-Appendix
-
-All consolidated queries can be found in the following master files:
-	•	carryover.sql
-	•	operationmetrics.sql
-	•	operationmetrics2.sql
-	•	spp.sql
-	•	shipbySLA.sql
-	•	TotalScriptVolumeFromPnP.sql
-
-Supplementary Excel sources:
-	•	comments&targets.xlsx
-	•	Shipping_Cost_Per_Package.xlsx
-
-⸻
-
-Optional Enhancement (Recommended for GitHub)
-
-Add a Data Flow Diagram showing:
-
-Teradata (RXCOE_SA, IDW_COMMON)
-         │
-         ├──► Operational Metrics
-         │
-Snowflake (CORE_RX, CORE_FSSC)
-         ├──► SLA, Carryover, PnP, SPP
-         │
-Excel Sources (Targets, Cost)
-         ├──► Cost & Target Integration
-         │
-         ▼
-      Power BI / Tableau
-       Central Fill Ops Dashboard
-
-
-⸻
-
-Would you like me to add visualization thumbnails (e.g., sample KPI cards or dashboard layout images) and section links (e.g., quick jump to queries, metrics, data flow) for GitHub readability? That would make it presentation-ready for stakeholders or recruiters viewing your repository.
