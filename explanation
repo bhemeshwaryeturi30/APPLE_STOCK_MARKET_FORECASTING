@@ -1,9 +1,1 @@
 
-This project focuses on analyzing pharmacy store waiting bin (WB) space to identify stores that may be facing storage constraints or inefficiencies. The analysis uses data from an Excel-based source file that captures existing, minimum, and ideal WB space along with key operational metrics such as average scripts older than 15 days, construction details, and store ratings. The results are visualized in the Waiting Bin Store View Tableau dashboard, which helps teams make informed decisions about construction planning, store optimization, and workflow improvements.
-
-The main data source is the Excel file “Waiting Bin Store Space Evaluation.xlsx”, which serves as the foundation for the analysis. To use the file, open it in Excel and enter a store number in cell H1. The workbook will automatically populate relevant store-level data, including state, rating, average scripts older than 15 days, and waiting bin measurements. All space measurements are given in running feet, where one running foot approximately equals two waiting bin slots.
-
-Each store is evaluated by comparing its existing waiting bin space with both the minimum and ideal requirements. The difference between these values determines the store’s Critical Rating, which indicates how urgently additional space or construction adjustments are needed. There are three rating categories:
-	•	High Need: The store has less than the minimum required WB space and needs immediate attention.
-	•	On Watch: The store has slightly more than the minimum but less than the ideal space; monitoring is recommended.
-	•	No Need: The store has sufficient or excess WB space and no changes are necessary.
