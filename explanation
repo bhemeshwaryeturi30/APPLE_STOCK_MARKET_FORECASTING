@@ -1,1 +1,145 @@
+Here’s a clear, professional README.md for your Return to Stock (RTS) Weekly Metrics workflow, following your standard CVS-style template (same structure used for your previous Telepharmacy, QDepth, and Aetna IL projects).
+
+⸻
+
+Return to Stock (RTS) Weekly Metrics Dashboard
+
+This repository contains the Snowflake SQL workflows for preparing and analyzing Return to Stock (RTS) data to measure prescription verification, RTS events, and turnaround metrics at the fiscal week, region, and store levels.
+
+The process integrates data from prescription fill tables, patient activity logs, and fiscal calendars to calculate RTS rates, RTS-to-sale turnaround times, and related operational KPIs used in RTS performance dashboards.
+
+⸻
+
+Overview
+
+The Return to Stock (RTS) Weekly Metrics process is executed in two main stages:
+	1.	Data Preparation Phase (RTS_Weekly_Task_Part1_Data_Prep.sql)
+	•	Extracts and filters the baseline prescription and RTS data for the relevant fiscal weeks.
+	•	Defines fiscal week boundaries, identifies verified prescriptions, and captures RTS inventory events.
+	2.	Analysis and Dashboard Creation Phase (RTS_Weekly_Task_Part2_Analysis.sql)
+	•	Aggregates verification and RTS events at multiple levels (store, district, region, and area).
+	•	Calculates RTS rates, fill history indicators, and turnaround metrics.
+	•	Generates the final datasets powering the Return to Stock Dashboard tables used for reporting.
+
+The process culminates in a consolidated dataset stored as:
+DL_RX_OPERATION.RX_OPS_SANDBOX.RETURN_TO_STOCK_NEW_DASHBOARD,
+which feeds visualization tools for performance tracking and decision-making.
+
+⸻
+
+Setup and Data Sources
+
+Before running the workflow, ensure access to the following key schemas and curated data sources:
+	•	CORE_RX.CURATED_SCRIPT – prescription, fill, and activity details
+	•	CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK – fiscal week and date mapping
+	•	CORE_RX.CURATED_PRODUCT.DRUG – drug-level metadata (NDC, GCN)
+	•	CORE_RX.CURATED_LOCATION.STORE – store-to-region hierarchy (area, district, region)
+	•	DL_RX_OPERATION.RX_OPS_SANDBOX – staging and output tables for temporary and final data
+
+All procedures run in Snowflake and use parameterized fiscal week ranges determined automatically based on the current date.
+
+⸻
+
+Core Scripts and Logic
+
+1. OperationalMetric.sql
+
+A simple select statement used to display the final dashboard output:
+
+SELECT * 
+FROM DL_RX_OPERATION.RX_OPS_SANDBOX.RETURN_TO_STOCK_NEW_DASHBOARD;
+
+This view represents the consolidated RTS metrics ready for reporting.
+
+⸻
+
+2. RTS_Weekly_Task_Part1_Data_Prep.sql
+
+Procedure: Return_to_stock_Data_Prep_Procedure()
+
+Purpose:
+Prepares all base datasets required for RTS rate computation, including fiscal parameters, waiting bin prescriptions, verification timestamps, and RTS events.
+
+Key Steps:
+	•	Derives fiscal week start and end based on the most recent 12-month period.
+	•	Captures prescriptions with Waiting Bin, Sold, or RTS statuses from both live and history tables.
+	•	Extracts QV2 activity timestamps to identify verification dates.
+	•	Captures RTS inventory events to determine when prescriptions were returned to stock.
+	•	Stores all intermediate datasets as sandbox tables for use in the analysis procedure:
+	•	RTS_TEMP_BASE_RX
+	•	RTS_TEMP_FINAL_VERIFICATION
+	•	RTS_TEMP_RETURN_TO_STOCK
+	•	RTS_TEMP_FISCAL_PARAMS
+
+Procedure Execution:
+
+CALL Return_to_stock_Data_Prep_Procedure();
+
+Upon completion, it returns:
+'Data preparation completed successfully. Ready for analysis phase.'
+
+⸻
+
+3. RTS_Weekly_Task_Part2_Analysis.sql
+
+Procedure: Return_to_stock_Analysis_Procedure()
+
+Purpose:
+Performs detailed prescription-level analysis to calculate RTS performance metrics, rate trends, and volume measures by fiscal week and hierarchy level.
+
+Key Logic Summary:
+	•	Loads pre-prepared datasets from Part 1.
+	•	Identifies verified prescriptions and their first RTS occurrence.
+	•	Enriches data with product (GCN), store hierarchy, and patient details.
+	•	Determines fill types and sources (eRx, Manual, IVR/Digital, ReadyFill, etc.).
+	•	Calculates intervals between RTS and sale (DAYS_BETWEEN_RTS_AND_SOLD).
+	•	Assigns fill history flags based on prior-year fill activity.
+
+Aggregations Performed:
+	1.	Prescription-Level RTS Rate:
+	•	Computes verified vs. RTS counts (TTL_VERIFIED, TTL_RTS).
+	•	Calculates RTS rate:
+
+RTS_RATE = TTL_RTS / TTL_VERIFIED
+
+
+	•	Breakdowns by RX_REGION_NBR, RX_DISTRICT_NBR, FILL_SOURCE, FILL_NUMBER, and FILL_HISTORY_IND.
+
+	2.	Volume-Level RTS Rate:
+	•	Calculates total volume processed and returned within the same fiscal week.
+	•	Computes rate at volume level (RTS_VOLUME_RATE).
+
+Final Output Tables:
+	•	RETURN_TO_STOCK_NEW_DASHBOARD – main table for dashboard integration
+	•	RETURN_TO_STOCK_NEW_DASHBOARD_2 – enriched with fiscal week descriptors
+	•	Temporary tables cleaned up post-execution
+
+Procedure Execution:
+
+CALL Return_to_stock_Analysis_Procedure();
+
+Upon completion, it returns:
+'Analysis and dashboard creation completed successfully'
+
+⸻
+
+Output and Usage
+
+The Return to Stock Dashboard tables provide detailed metrics to assess store and regional performance, including:
+	•	Total verified prescriptions vs. returned to stock
+	•	RTS rates by fill type and channel
+	•	RTS-to-sale turnaround time (5-day and 30-day intervals)
+	•	Trends across fiscal weeks, months, and geographic hierarchies
+
+The primary table RETURN_TO_STOCK_NEW_DASHBOARD is consumed by Tableau dashboards for visual monitoring and trend analysis.
+
+⸻
+
+Summary
+
+The Return to Stock Weekly Metrics Workflow automates end-to-end data processing — from raw prescription fills to validated RTS performance analytics.
+
+By combining fiscal calendar alignment, activity-based tracking, and hierarchical aggregation, this system delivers accurate, actionable insights into pharmacy RTS behaviors, helping optimize inventory turnover, workflow efficiency, and prescription readiness.
+
+⸻
 
