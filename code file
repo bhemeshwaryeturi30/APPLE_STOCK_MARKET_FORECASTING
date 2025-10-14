@@ -1,0 +1,417 @@
+carryover.sql code:
+
+--Snowflake Source
+
+with CF_ACT as (
+select 
+      b.rx_nbr 
+    , b.store_nbr AS CF_STORE_NBR 
+    , b.fill_nbr 
+    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
+    , XREF.RXC_PRESCRIPTION_FILL_ID
+    , MAX(C.TRACKING_NBR) AS TRACKING_NBR
+    , max(case when c.order_status_cd = 2 then c.rec_eff_ts else null end) as Prep_Date
+    , max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Handoff_Date
+    , max(case when c.order_status_cd = 4 then c.rec_eff_ts else null end) as Delivered_Date
+from core_fssc.curated_orders.order_delivery as a 
+join core_fssc.curated_orders.order_delivery_item as b
+    on a.order_id = b.order_id
+    and a.store_nbr = b.store_nbr
+join (select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts
+          ,TRACKING_NBR
+      --history table does not have current record in it
+      from core_fssc.curated_orders.order_delivery_history -- tracks all the status a package goes through except the current status
+      union 
+      select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts
+          ,TRACKING_NBR
+      from core_fssc.curated_orders.order_delivery) as c -- tracks current status of a tranx
+    on a.order_id = c.order_id 
+    and a.store_nbr = c.store_nbr
+Join CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF AS XREF
+on XREF.STORE_NBR =CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER)
+and XREF.FILL_NBR =b.fill_nbr
+and XREF.RX_NBR = b.rx_nbr
+JOIN CORE_RX.CURATED_LOCATION.STORE AS STORE
+ON CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER)=STORE.STORE_NBR
+WHERE c.order_status_cd IN (2,4,13) -- Only the required activities
+AND A.DELIVERY_SLA_CD='CF-STS' -- CF delivery code
+AND YEAR(A.rec_eff_ts) >= 2025 
+group by 1,2,3,4,5
+),
+temp1 as (
+SELECT 
+CENTRAL_FILL_FACILITY_ID AS CF_STORE_NBR
+,STORE_NBR
+,STATE_CD AS ST_CD
+,PRESCRIPTION_FILL_ID
+,TIMEZONE_DSC AS TM_ZONE
+,CAL_DAY.FISCAL_YEAR_NBR
+,CAL_DAY.FISCAL_MONTH_NBR
+,CAL_DAY.FISCAL_MONTH_END_DT
+,CAL_DAY.FISCAL_WEEK_NBR
+,CAL_DAY.FISCAL_WEEK_END_DT
+,cal_Day.fiscal_week_start_dt
+,cal_day.fiscal_month_start_dt
+,CAL_DAY.DAY_OF_WEEK_DSC AS DOW
+,TIME_ADJ_HOLDING_QUEUE_OUT_TS AS HOLDING_QUEUE_OUT
+
+FROM(
+    SELECT 
+    CF_RX_ASS.CENTRAL_FILL_FACILITY_ID
+    ,STR.STORE_NBR
+    ,STR.STATE_CD
+    ,STR.TIMEZONE_DSC
+    ,CF_RX_ASS.HOLDING_QUEUE_OUT_TS
+    ,CASE
+    WHEN STR.TIMEZONE_DSC = 'Central' THEN TIMESTAMPADD(HOUR,-1,CF_RX_ASS.HOLDING_QUEUE_OUT_TS) -- we are localizing the timezone from EST to regional clock
+    WHEN STR.TIMEZONE_DSC IN ('Mountain AZ','Mountain') THEN TIMESTAMPADD(HOUR,-2,CF_RX_ASS.HOLDING_QUEUE_OUT_TS)
+    WHEN STR.TIMEZONE_DSC = 'Pacific' THEN TIMESTAMPADD(HOUR,-3,CF_RX_ASS.HOLDING_QUEUE_OUT_TS)
+    ELSE CF_RX_ASS.HOLDING_QUEUE_OUT_TS
+    END AS TIME_ADJ_HOLDING_QUEUE_OUT_TS
+    ,CF_RX_ASS.PRESCRIPTION_FILL_ID
+    FROM CORE_RX.CURATED_SCRIPT.CENTRAL_FILL_RX_ASSIGNMENT AS CF_RX_ASS
+    LEFT JOIN CORE_RX.CURATED_LOCATION.STORE AS STR
+        ON STR.STORE_NBR = TO_NUMBER(CF_RX_ASS.HOME_STORE_FACILITY_ID)
+    where CF_RX_ASS.holding_queue_out_ts is not null
+    having hour(TIME_ADJ_HOLDING_QUEUE_OUT_TS) <=13
+    ) AS ASSI
+    INNER JOIN (
+        SELECT t1.DATE_DT, t1.FISCAL_WEEK_NBR, t1.FISCAL_MONTH_NBR, t1.FISCAL_YEAR_NBR,
+        t2.END_DT as FISCAL_WEEK_END_DT,
+        t3.END_DT as FISCAL_MONTH_END_DT,
+        t4.DAY_OF_WEEK_DSC,
+        t2.start_dt as fiscal_week_start_dt,
+        t3.start_dt as fiscal_month_start_dt,
+        FROM CORE_FSSC.CURATED_CALENDAR.DAY t1
+        INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK t2 ON t1.FISCAL_WEEK_NBR = t2.FISCAL_WEEK_NBR
+        INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_MONTH t3 ON t1.FISCAL_MONTH_NBR = t3.FISCAL_MONTH_NBR
+        INNER JOIN CORE_FSSC.CURATED_CALENDAR.DAY t4 ON t1.DAY_OF_WEEK_DSC = t4.DAY_OF_WEEK_DSC
+    ) as CAL_DAY
+    ON CAL_DAY.DATE_DT = TO_DATE(TIME_ADJ_HOLDING_QUEUE_OUT_TS)
+   AND CAL_DAY.FISCAL_WEEK_NBR >= 202501
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+)
+select 
+temp1.FISCAL_YEAR_NBR,
+temp1.FISCAL_MONTH_NBR,
+temp1.FISCAL_MONTH_END_DT,
+temp1.FISCAL_WEEK_NBR,
+temp1.FISCAL_WEEK_END_DT,
+temp1.fiscal_week_start_dt,
+temp1.fiscal_month_start_dt,
+temp1.CF_STORE_NBR,
+temp1.dow,
+count (distinct case when (TO_DATE (CF_ACT.Handoff_Date) > TO_DATE(temp1.HOLDING_QUEUE_OUT))  then PRESCRIPTION_FILL_ID else null end) as fill_count
+,count (distinct PRESCRIPTION_FILL_ID) as total_fill_count
+from CF_ACT 
+join temp1 
+on temp1.PRESCRIPTION_FILL_ID = CF_ACT.RXC_PRESCRIPTION_FILL_ID
+and  temp1.STORE_NBR = CF_ACT.HOME_STORE_NBR
+AND TEMP1.dow IN ('MON','TUE','WED','THU','FRI')
+and temp1.FISCAL_WEEK_END_DT < current_date()
+and DAYOFWEEKISO(CF_ACT.Handoff_Date) IN (1,2,3,4,5,6)
+Group by 1,2,3,4,5,6,7,8,9
+order by 2,4,6,7
+
+comments&targets excel format has columsn Store Number	Metric	Target	Comments (Max 205 characters, incl spaces)	Update Date	, FISCAL_YEAR_NBR	FISCAL_MONTH_NBR	FISCAL_MONTH_END_DT	ST_CD	CF_STORE_NBR	NPS_AGG_PROMOTERS	NPS_AGG_DETRACTORS	NPS_AGG_DEN	NPS_SRVY_CNT	
+
+
+operationmetrics.sql code:
+
+--Teradata Source
+
+SELECT 
+--Dimensions Calendar
+t1.FISCAL_WEEK_NBR,
+t1.FISCAL_YEAR_NBR,
+t1.FISCAL_MONTH_NBR,
+t0.PROD_FISCAL_WEEK_NBR,
+t1.FISCAL_MONTH_END_DT, 
+t1.FISCAL_WEEK_start_DT,
+t1.FISCAL_WEEK_END_DT, 
+--Dimensions Location
+t0.CF_STORE_NBR,
+t0.ST_CD,
+
+COUNT(DISTINCT t0.PRSCRT_FILL_ID) as FILLS_PRODUCED,
+--Sum(CASE WHEN t0.PRSCRT_FILL_ID IS NOT NULL THEN 1.000000 END) FILLS_PRODUCED_v2,
+COUNT(DISTINCT CASE WHEN t0.LAST_PV2_DT IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_PV2,
+COUNT(DISTINCT CASE WHEN t0.LAST_CF_SHIPPED_DT IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_SHIPPED,
+COUNT(DISTINCT CASE WHEN t0.LAST_CF_CHECKIN_DT IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_CHECKEDIN,
+COUNT(DISTINCT CASE WHEN t0.POS_TRNCT_DT  IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_SOLD_ACT,
+COUNT(DISTINCT CASE WHEN t0.SALE_END_IND=1  AND t0.POS_TRNCT_DT  IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_SOLD,
+--SLA by Promised
+--SUM(CASE WHEN t0.DELIVERED_DATE < t0.NEW_PRM_DT THEN 1 ELSE 0 END) as SLA_NUM,
+SUM(CASE WHEN CAST(t0.DELIVERED_DATE as DATE) <= CAST(t0.NEW_PRM_DT as DATE) THEN 1 ELSE 0 END) as CUST_SLA_NUM,
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL AND  t0.NEW_PRM_DT IS NOT NULL THEN 1 ELSE 0 END) as CUST_SLA_DEN,
+SUM(CASE WHEN t0.HANDOFF_DATE IS NOT NULL AND  t0.NEW_PRM_DT < CURRENT_DATE THEN 1 ELSE 0 END) as CUST_SLA_DEN_V2,
+--Same Day Checkin
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL AND CAST(t0.DELIVERED_DATE as DATE) = CAST(t0.LAST_CF_CHECKIN_DT as DATE) THEN 1 ELSE 0 END) as SAME_DAY_CHECKIN_NUM,
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL AND t0.LAST_CF_CHECKIN_DT IS NOT NULL THEN 1 ELSE 0 END) as SAME_DAY_CHECKIN_DEN,
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL THEN 1 ELSE 0 END) as SAME_DAY_CHECKIN_DEN_V2
+--Order Ready
+FROM RXCOE_SA.SG_CF_MASTER t0
+LEFT JOIN IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_WEEK t1 ON t0.PROD_FISCAL_WEEK_NBR = t1.FISCAL_WEEK_NBR 
+WHERE 
+(CENTR_FILL_STUS_IND='Y' OR 
+LAST_CF_SHIPPED_DT IS NOT NULL and 
+LAST_CF_SHIPPED_DT between t1.FISCAL_WEEK_start_DT and t1.FISCAL_WEEK_END_DT
+OR
+--LAST_CF_REJECT_DT IS NOT NULL OR
+LAST_CF_CHG_EXP_DATE_DT IS NOT NULL OR
+LAST_CF_ENT_QI_DT IS NOT NULL)
+AND FISCAL_YEAR_START_DT >= DATE'2024-01-01'
+and LAST_CF_SHIPPED_DT between t1.fiscal_week_start_dt and t1.fiscal_week_end_dt
+AND FISCAL_YEAR_START_DT < CURRENT_DATE
+and FISCAL_week_end_DT < CURRENT_DATE
+and t0.CF_STORE_NBR is not null
+GROUP BY 1,2,3,4,5,6,7,8,9
+
+operationmetrics2 code:
+--Teradata Source
+
+SELECT 
+--Dimensions Calendar
+t1.FISCAL_YEAR_NBR,
+t1.FISCAL_MONTH_NBR,
+t0.PROD_FISCAL_WEEK_NBR,
+t1.FISCAL_MONTH_END_DT,
+t1.FISCAL_WEEK_END_DT, 
+--Dimensions Location
+t0.CF_STORE_NBR,
+t0.ST_CD,
+--t0.STORE_NBR,
+--Metrics
+COUNT(DISTINCT t0.PRSCRT_FILL_ID) as FILLS_PRODUCED,
+--Sum(CASE WHEN t0.PRSCRT_FILL_ID IS NOT NULL THEN 1.000000 END) FILLS_PRODUCED_v2,
+COUNT(DISTINCT CASE WHEN t0.LAST_PV2_DT IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_PV2,
+COUNT(DISTINCT CASE WHEN t0.LAST_CF_SHIPPED_DT IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_SHIPPED,
+COUNT(DISTINCT CASE WHEN t0.LAST_CF_CHECKIN_DT IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_CHECKEDIN,
+COUNT(DISTINCT CASE WHEN t0.POS_TRNCT_DT  IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_SOLD_ACT,
+COUNT(DISTINCT CASE WHEN t0.SALE_END_IND=1  AND t0.POS_TRNCT_DT  IS NOT NULL THEN t0.PRSCRT_FILL_ID ELSE NULL END) as FILLS_SOLD,
+--SLA by Promised
+--SUM(CASE WHEN t0.DELIVERED_DATE < t0.NEW_PRM_DT THEN 1 ELSE 0 END) as SLA_NUM,
+SUM(CASE WHEN CAST(t0.DELIVERED_DATE as DATE) <= CAST(t0.NEW_PRM_DT as DATE) THEN 1 ELSE 0 END) as CUST_SLA_NUM,
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL AND  t0.NEW_PRM_DT IS NOT NULL THEN 1 ELSE 0 END) as CUST_SLA_DEN,
+SUM(CASE WHEN t0.HANDOFF_DATE IS NOT NULL AND  t0.NEW_PRM_DT < CURRENT_DATE THEN 1 ELSE 0 END) as CUST_SLA_DEN_V2,
+--Same Day Checkin
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL AND CAST(t0.DELIVERED_DATE as DATE) = CAST(t0.LAST_CF_CHECKIN_DT as DATE) THEN 1 ELSE 0 END) as SAME_DAY_CHECKIN_NUM,
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL AND t0.LAST_CF_CHECKIN_DT IS NOT NULL THEN 1 ELSE 0 END) as SAME_DAY_CHECKIN_DEN,
+SUM(CASE WHEN t0.DELIVERED_DATE IS NOT NULL THEN 1 ELSE 0 END) as SAME_DAY_CHECKIN_DEN_V2
+--Order Ready
+FROM RXCOE_SA.SG_CF_MASTER t0
+LEFT JOIN IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_WEEK t1 ON t0.PROD_FISCAL_WEEK_NBR = t1.FISCAL_WEEK_NBR 
+WHERE 
+(CENTR_FILL_STUS_IND='Y' OR 
+t0.PRSCRT_FILL_ID IS NULL OR --Why am I taking this?
+LAST_CF_CHECKIN_DT IS NOT NULL OR
+LAST_CF_SHIPPED_DT IS NOT NULL OR
+--LAST_CF_REJECT_DT IS NOT NULL OR
+LAST_CF_CHG_EXP_DATE_DT IS NOT NULL OR
+LAST_CF_ENT_QI_DT IS NOT NULL)
+AND FISCAL_YEAR_START_DT >= DATE'2023-01-01'
+AND FISCAL_YEAR_START_DT < CURRENT_DATE
+--AND FISCAL_YEAR_END_DT > CURRENT_DATE
+AND FISCAL_WEEK_END_DT < CURRENT_DATE
+GROUP BY 1,2,3,4,5,6,7
+
+spp.sql code:
+
+--Snowflake Source
+
+--- update the query to anchor on Handoff date vs create date ----
+
+SELECT
+FISCAL_YEAR_NBR,
+FISCAL_MONTH_NBR,
+FISCAL_MONTH_END_DT,
+FISCAL_WEEK_NBR,
+FISCAL_WEEK_END_DT,
+fiscal_week_start_dt,
+fiscal_month_start_dt,
+BASE.STORE_NBR as CF_STORE_NBR,
+--BASE.HOME_STATE,
+COUNT(DISTINCT BASE.TRACKING_NBR) as TRACK_CNT,
+COUNT(distinct rx_nbr,HOME_STORE,fill_nbr) as RX_CNT
+FROM (
+    SELECT
+    A.TRACKING_NBR,
+    A.STORE_NBR,
+    CAST(A.DESTINATION_RECIPIENT_TXT AS INT) AS HOME_STORE,
+  --  A.DESTINATION_ADDRESS_STATE as HOME_STATE,
+    A.OMS_ORDER_NBR,
+    B.RX_NBR,
+    b.fill_nbr,
+    CAST(A.CREATE_TS as DATE) as SHIP_DATE,
+    CAL.FISCAL_YEAR_NBR,
+    CAL.FISCAL_MONTH_NBR,
+    CAL.FISCAL_WEEK_NBR,
+    CAL.FISCAL_WEEK_END_DT,
+    CAL.FISCAL_MONTH_END_DT,
+    cal.fiscal_month_start_dt,
+    cal.fiscal_week_start_dt
+    FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY AS A
+    INNER JOIN CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_ITEM AS B ON A.ORDER_ID = B.ORDER_ID AND A.STORE_NBR = CAST(B.STORE_NBR AS INT)
+    INNER JOIN (
+        SELECT t1.DATE_DT, t1.FISCAL_WEEK_NBR, t1.FISCAL_MONTH_NBR, t1.FISCAL_YEAR_NBR, 
+        t2.END_DT as FISCAL_WEEK_END_DT,
+        t3.END_DT as FISCAL_MONTH_END_DT,
+        t4.START_DT as FISCAL_YEAR_START_DT, t4.END_DT as FISCAL_YEAR_END_DT,
+        t2.start_dt as fiscal_week_start_dt,
+        t3.start_dt as fiscal_month_start_dt,
+        FROM CORE_FSSC.CURATED_CALENDAR.DAY t1
+        INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK t2 ON t1.FISCAL_WEEK_NBR = t2.FISCAL_WEEK_NBR
+        INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_MONTH t3 ON t1.FISCAL_MONTH_NBR = t3.FISCAL_MONTH_NBR
+        INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_YEAR t4 ON t1.FISCAL_YEAR_NBR = t4.FISCAL_YEAR_NBR
+    ) as CAL ON TO_DATE(A.CREATE_TS) = CAL.DATE_DT
+    WHERE 
+    A.DELIVERY_SLA_CD in ('CF-STS')
+    AND TRACKING_NBR is not null
+    --AND CAST(A.CREATE_TS as DATE) BETWEEN '2023-01-01' and '2023-10-07'
+    AND MDP_CRM_ORDER_ID is null
+    AND A.STORE_NBR in (11507,11506,11339)
+    AND FISCAL_YEAR_START_DT >= DATE'2024-01-01'
+    AND FISCAL_YEAR_START_DT < CURRENT_DATE
+    --AND FISCAL_YEAR_END_DT > CURRENT_DATE
+    AND FISCAL_WEEK_END_DT < current_Date
+    GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+) as BASE
+GROUP BY 1,2,3,4,5,6,7,8
+
+shipbySLA.sql code:
+--Snowflake Source
+
+SELECT
+cal.FISCAL_YEAR_NBR,
+cal.FISCAL_MONTH_NBR,
+cal.FISCAL_WEEK_start_DT,
+cal.FISCAL_MONTH_END_DT,
+cal.FISCAL_WEEK_NBR,
+cal.fiscal_month_start_dt,
+cal.FISCAL_WEEK_END_DT,
+CAST(t1.CENTRAL_FILL_FACILITY_ID as INT) as CF_STORE_NBR,
+str.STATE_CD,
+CASE WHEN CREATED_TS > SHIP_BY_TS THEN 'Y' ELSE 'N' END as CRTE_AFTER_SLA_FLAG,
+COUNT(DISTINCT PRESCRIPTION_FILL_ID) as TOT_RX_CNT,
+COUNT(DISTINCT CASE WHEN CENTRAL_FILL_SHIPPING_TS IS NOT NULL THEN PRESCRIPTION_FILL_ID ELSE NULL END) as SHIPPED_CNT,
+COUNT(DISTINCT 
+    CASE 
+    WHEN CENTRAL_FILL_SHIPPING_TS IS NOT NULL AND 
+    (TO_DATE(CENTRAL_FILL_SHIPPING_TS) <= TO_DATE(SHIP_BY_TS)
+    OR 
+    (HOLDING_QUEUE_OUT_TS IS NOT NULL AND 
+    (TO_DATE(CENTRAL_FILL_SHIPPING_TS) <= TO_DATE(HOLDING_QUEUE_OUT_TS)
+    OR (DAYNAME(HOLDING_QUEUE_OUT_TS) = 'Sun' AND TO_DATE(CENTRAL_FILL_SHIPPING_TS) <= TO_DATE(HOLDING_QUEUE_OUT_TS)+1)
+    ))) THEN PRESCRIPTION_FILL_ID 
+    ELSE NULL END) as SLA_MET_CNT,
+COUNT(DISTINCT 
+    CASE 
+    WHEN CENTRAL_FILL_SHIPPING_TS IS NOT NULL AND TO_DATE(CENTRAL_FILL_SHIPPING_TS) <= TO_DATE(SHIP_BY_TS) THEN PRESCRIPTION_FILL_ID 
+    ELSE NULL END) as SLA_MET_CNT_OLD
+--COUNT(DISTINCT CASE WHEN CREATED_TS > SHIP_BY_TS THEN PRESCRIPTION_FILL_ID ELSE NULL END) as CRTE_AFTER_SLA_CNT
+FROM CORE_RX.CURATED_SCRIPT.CENTRAL_FILL_RX_ASSIGNMENT t1
+INNER JOIN SEM_RX.COMMON_RX.SEM_STORE as STR ON t1.HOME_STORE_FACILITY_ID = STR.STORE_NBR
+INNER JOIN (
+    SELECT t1.DATE_DT, t1.FISCAL_WEEK_NBR, t1.FISCAL_MONTH_NBR, t1.FISCAL_YEAR_NBR, 
+    t2.END_DT as FISCAL_WEEK_END_DT,
+    t3.END_DT as FISCAL_MONTH_END_DT,
+    t4.START_DT as FISCAL_YEAR_START_DT, t4.END_DT as FISCAL_YEAR_END_DT,
+    t2.start_dt as FISCAL_WEEK_start_DT,
+    t3.start_dt as fiscal_month_start_dt,
+    FROM CORE_FSSC.CURATED_CALENDAR.DAY t1
+    INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK t2 ON t1.FISCAL_WEEK_NBR = t2.FISCAL_WEEK_NBR
+    INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_MONTH t3 ON t1.FISCAL_MONTH_NBR = t3.FISCAL_MONTH_NBR
+    INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_YEAR t4 ON t1.FISCAL_YEAR_NBR = t4.FISCAL_YEAR_NBR
+) as CAL ON TO_DATE(t1.SHIP_BY_TS) = CAL.DATE_DT
+WHERE SHIP_BY_TS IS NOT NULL
+AND FISCAL_YEAR_START_DT >= DATE'2024-01-01'
+AND CAL.FISCAL_YEAR_START_DT < CURRENT_DATE
+AND CAL.FISCAL_YEAR_END_DT > CURRENT_DATE
+AND CAL.FISCAL_WEEK_END_DT < CURRENT_DATE
+AND CREATED_TS < SHIP_BY_TS --expectation to ship by the day it drops in 
+GROUP BY 1,2,3,4,5,6,7,8,9,10
+
+
+TotalScriptVolumeFromPnP.sql  code:
+
+--Snowflake Source
+
+WITH CF_PNP as (
+select 
+      b.rx_nbr 
+    , b.store_nbr AS CF_STORE_NBR 
+    , b.fill_nbr 
+    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
+    , STORE.RX_AREA_NBR AS DIVISION_NBR
+    , STORE.RX_REGION_NBR AS REGION_NBR
+    , STORE.RX_DISTRICT_NBR AS DISTRICT_NBR
+    , MAX(a.ORDER_ID) as Order_ID
+    , MAX(A.COURIER_NM) AS COURIER_NM
+    , MAX(C.TRACKING_NBR) AS TRACKING_NBR
+    , max(case when c.order_status_cd = 10 then c.rec_eff_ts else null end) as Order_date 
+    , max(case when c.order_status_cd = 2 then c.rec_eff_ts else null end) as Prep_Date
+    , max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Handoff_Date
+    , max(case when c.order_status_cd = 4 then c.rec_eff_ts else null end) as Delivered_Date
+    , max(case when c.order_status_cd = 8 then c.rec_eff_ts else null end) as Cancelled_Date
+    , max(case when c.order_status_cd = 14 then c.rec_eff_ts else null end) as Attempted_Delivery 
+    , max(case when c.order_status_cd = 20 then c.rec_eff_ts else null end) as Handoff_Failure
+from core_fssc.curated_orders.order_delivery as a 
+join core_fssc.curated_orders.order_delivery_item as b
+    on a.order_id = b.order_id
+    and a.store_nbr = b.store_nbr
+join (select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts
+          ,TRACKING_NBR
+      --history table does not have current record in it
+      from core_fssc.curated_orders.order_delivery_history -- tracks all the status a package goes through except the current status
+      union 
+      select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts
+          ,TRACKING_NBR
+      from core_fssc.curated_orders.order_delivery) as c -- tracks current status of a tranx
+    on a.order_id = c.order_id 
+    and a.store_nbr = c.store_nbr
+JOIN CORE_RX.CURATED_LOCATION.STORE AS STORE
+    ON CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER)=STORE.STORE_NBR
+WHERE c.order_status_cd IN (2,4,8,10,13,14,20) -- Only the required activities
+AND A.DELIVERY_SLA_CD='CF-STS' -- CF delivery code
+AND TO_DATE(A.rec_eff_ts) >= Date('01/01/2024')
+group by 1,2,3,4,5,6,7
+having CF_STORE_NBR in('11339','11506','11507')
+)
+
+select cal.FISCAL_WEEK_NBR, CF_PNP.order_id ,CF_PNP.CF_STORE_NBR,
+CF_PNP.TRACKING_NBR,FM.END_DT as Fiscal_Month_end_date, FW.start_dt as fiscal_week_start_dt, 
+fm.start_dt as fiscal_month_start_dt,cal.FISCAL_MONTH_NBR,cal.Fiscal_year_nbr,FW.end_dt as Fiscal_Week_end_date, 
+CF_PNP.HOME_STORE_NBR,CF_PNP.RX_NBR,CF_PNP.Fill_nbr
+from CF_PNP
+join  CORE_FSSC.CURATED_CALENDAR.DAY AS CAL
+    ON TO_DATE(CF_PNP.Handoff_Date) = CAL.DATE_DT
+    join CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK as FW
+    on cal.fiscal_week_nbr = FW.fiscal_week_nbr
+    join CORE_FSSC.CURATED_CALENDAR.FISCAL_MONTH as FM
+    on FW.fiscal_month_nbr = FM.Fiscal_month_nbr
+and FM.fiscal_month_nbr >= 202501
+and FW.end_dt < current_date
+    group by all
+order by 1,2,3
+
+Shipping Cost Per Package
+excel based source having columns:
+FISCAL_YEAR_NBR	FISCAL_MONTH_NBR	Fiscal_month_start_dt	FISCAL_MONTH_END_DT	FISCAL_WEEK_NBR	Fiscal_week_start_dt	FISCAL_WEEK_END_DT	STORE_NBR	Cost Per Package	SPP	
+
+
