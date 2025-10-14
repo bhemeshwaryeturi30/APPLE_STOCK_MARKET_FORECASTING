@@ -1,1 +1,140 @@
+Here’s your README.md written in the same structured, professional, and Snowflake–Teradata hybrid style as your earlier SQL documentation (following the original template from your first request):
+
+⸻
+
+Patient Profile Deactivation Workflow
+
+This repository contains the SQL scripts and logic used to identify, evaluate, and deactivate obsolete or inactive patient profiles from pharmacy systems. The workflow is executed across both Snowflake (for recent data validation and enrichment) and Teradata (for legacy data filtering and candidate selection) environments.
+
+The primary objective of this process is to maintain an accurate and compliant patient database by identifying profiles that are inactive, duplicative, or no longer valid while retaining active or clinically relevant records.
+
+⸻
+
+Overview
+
+The Patient Profile Deactivation process ensures that duplicate or outdated patient profiles are systematically identified and safely deactivated.
+
+The workflow evaluates multiple factors — including fill activity, age, caregiving roles, allergies, immunization history, condition data, patient notes, and Rx Connect ties — to determine if a patient record is still active or can be safely marked for deactivation.
+
+This process is executed in two stages:
+	1.	Snowflake Stage (PatientProfileDeactivation.sql):
+Applies clinical and operational filters using curated data sources to validate which profiles meet deactivation criteria.
+	2.	Teradata Stage (Updated_Deactivation_Step1_SQL_Block.sql):
+Builds multi-step candidate tables to finalize source (inactive) and target (active) profiles for deactivation.
+
+⸻
+
+Setup and Data Sources
+
+Both Snowflake and Teradata environments must have access to the following schemas and tables:
+
+Snowflake Sources
+	•	CORE_RX.CURATED_PERSON.* — patient, allergy, and condition details
+	•	CORE_RX.CURATED_SCRIPT.* — prescription, fill, and note data
+	•	DL_RX_OPERATION.RX_OPS_SANDBOX.* — working sandbox tables
+	•	CORE_RX.CURATED_PRODUCT.* — immunization and drug crosswalk tables
+
+Teradata Sources
+	•	IDW_RX_OPERATIONS_S_BC — primary operational scripts, patient, and event tables
+	•	IDW_PRODUCT_DEVELOPMENT_S_BC — caregiving relationships
+	•	IDW_COMMON — drug and reference tables
+	•	RXCOE_PMI — final deactivation tables and reporting outputs
+
+⸻
+
+Core Logic and Tables
+
+1. Snowflake: PatientProfileDeactivation.sql
+
+This script identifies profiles eligible for deactivation by applying the following rules:
+	•	No prescription pickup, fill, or specialty activity in the last 36 months.
+	•	Patient is 18 years or older.
+	•	Patient is not an active caregiver or caregivee.
+	•	No confirmed allergy, condition, or vaccination data.
+	•	No active or meaningful patient notes (excluding “DO NOT USE”, “DUPLICATE PROFILE”, etc.).
+	•	Not tied to an active RxConnect profile.
+	•	No PMP comments or pending prescriptions on hold.
+
+Key Temporary Tables:
+	•	RXTIED – Identifies profiles linked to RxConnect accounts.
+	•	CG_IND – Flags caregiver/caregivee relationships.
+	•	PATIENT_NOTES – Counts valid patient notes and excludes invalid or duplicate entries.
+	•	ALLERGY_CHECK – Detects patients with confirmed allergy codes.
+	•	CONDITION – Identifies patients with recorded medical conditions.
+	•	IMMUNIZATION_COUNT – Flags patients with vaccination history.
+	•	REC_ACTV / REC_FILLS – Tracks recent fill activity within 36 months.
+
+All temporary datasets are merged into a final output table:
+DL_RX_OPERATION.RX_OPS_SANDBOX.PATIENT_DEACTIVATION_PROFILES_FINAL_SG
+
+This table consolidates all relevant flags — Rx tie, allergy, note, condition, immunization, activity, and fill indicators — to identify truly inactive profiles.
+
+⸻
+
+2. Teradata: Updated_Deactivation_Step1_SQL_Block.sql
+
+This script executes the legacy patient deactivation framework using volatile tables to isolate, rank, and finalize candidate profiles.
+
+Main Steps:
+
+a) Duplicate Detection
+
+DUPES identifies CVS IDs with multiple active RxC patient IDs, excluding deleted or invalid records.
+
+b) Caregiver and Fill Enrichment
+
+Subsequent tables (DUPES_W_CAREGIVING, DUPES_W_FILL_INFO) append caregiving roles, vaccination flags, ISP fills, and most recent fill/pickup dates.
+
+c) Patient Comment and Rx Tie Validation
+
+Tables such as DUPES_W_PATIENT_COMMENTS and DUPES_W_RX_TIES identify whether a patient has notes, comments, or RxConnect ties that prevent deactivation.
+
+d) Profile Attributes and Activity
+
+DUPES_ALL_INFO aggregates demographic, allergy, condition, and activity data, calculating eligibility flags (e.g., age, allergy info, caregiver status, recent fills).
+
+e) Clinical and Compliance Filters
+
+The script introduces additional validation layers:
+	•	PMP_COMMENTS – identifies PMP notes.
+	•	ON_HOLD_SCRIPTS – flags pending prescriptions.
+	•	CONDITION_DIAGNOSIS – confirms existing diagnoses.
+	•	OBSOLETE – filters already-obsolete records.
+
+f) Deactivation Candidate Selection
+
+The combined dataset (DEACTIVATE_CONDIDATES → DEACTIVATE_CANDIDATES_STEP3) applies strict business rules:
+	•	Must be inactive and eligible (ELIGIBLE = 1, ACTIVE = 0).
+	•	No recent fills, notes, allergies, vaccinations, or conditions.
+	•	Not a minor, caregiver, or Rx-tied.
+	•	No PMP comments or on-hold scripts.
+
+Profiles are ranked by CVS ID to retain one active (target) profile per patient and mark others as inactive (source).
+
+g) Final Output Tables
+	•	RXCOE_PMI.DEACTIVATE_CANDIDATES_STEP5 — Links source and target profiles by CVS ID and DOB for confirmation.
+	•	RXCOE_PMI.DEACTIVATE_CANDIDATES_ALLERGY — Captures associated allergy codes.
+	•	RXCOE_PMI.DEACTIVATE_CANDIDATES_PROFILES — Produces final list with name, DOB, and address details for validation.
+
+⸻
+
+Output and Usage
+
+The combined output identifies inactive or duplicate patient profiles across systems and stores them for further review and safe deactivation.
+
+Key outcomes:
+	•	Reduction of duplicate and outdated profiles across systems.
+	•	Ensured retention of valid, active profiles with clinical data.
+	•	Compliance with privacy, data integrity, and operational standards.
+	•	Integration readiness for automated deactivation workflows.
+
+⸻
+
+Summary
+
+The Patient Profile Deactivation Workflow is an end-to-end SQL-driven process that harmonizes Snowflake and Teradata logic to ensure a clean, accurate, and compliant patient master.
+
+It systematically eliminates inactive or redundant records while protecting active patients and clinical data, ensuring the overall quality and trustworthiness of pharmacy information systems.
+
+⸻
 
