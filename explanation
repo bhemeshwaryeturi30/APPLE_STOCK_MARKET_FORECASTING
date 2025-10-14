@@ -1,1 +1,189 @@
 
+Perfect — here’s your fully structured, GitHub-ready README.md written in the same professional template and tone you’ve been using for your Snowflake/Teradata repositories.
+It summarizes all three SQL scripts: ExceptionOutreaches.sql, Exception_Outreach_Procedure.sql, and Exception_Outreach_Scheduler.sql.
+
+⸻
+
+SQL Queries and Procedure for Exception Outreach Dashboard Data Creation
+
+This repository contains SQL scripts and procedures used for generating and scheduling data pipelines for the Exception Outreach Dashboard.
+These scripts are designed for execution in Snowflake and leverage curated datasets from the CORE_RX and CORE_FSSC schemas.
+The dashboard provides comprehensive insights into exception outreach volumes, action note performance, and resolution trends across fiscal periods.
+
+⸻
+
+Overview
+
+The Exception Outreach Dashboard automates the tracking and analysis of exception outreach performance across retail and pharmacy operations.
+It calculates metrics related to:
+	•	Action note creation and resolution rates
+	•	Inducted prescription volume and engagement ratios
+	•	OnR (Order Not Ready) and STR (Scripts Through QV2 → Sold) performance
+	•	Average days to resolve exceptions
+	•	Chain-level metrics (ONR_CHAIN and STR_CHAIN) for benchmarking
+
+All logic is implemented within a parameterized stored procedure (Exception_Outreaches_Procedure) that dynamically refreshes and recreates the base and summary tables within Snowflake.
+
+⸻
+
+Setup and Environment
+
+Before running the procedure, ensure the following are correctly set:
+
+USE DATABASE DL_RX_OPERATION;
+USE SCHEMA RX_OPS_SANDBOX;
+USE WAREHOUSE WH_RX_QUERY_RXANALYTICS_01;
+
+Source Databases:
+	•	CORE_RX.CURATED_SCRIPT
+	•	CORE_FSSC.CURATED_CALENDAR
+	•	APP_OMNIRX.OMNI_DL
+	•	APP_OMNIRX.OMNI_KPI
+
+Destination Tables (Outputs):
+	•	DL_RX_OPERATION.RX_OPS_SANDBOX.EXCEPTION_OUTREACH_DASHBOARD
+	•	DL_RX_OPERATION.RX_OPS_SANDBOX.EXCEPTION_OUTREACH_DASHBOARD_ACTION_NOTE_LEVEL
+	•	DL_RX_OPERATION.RX_OPS_SANDBOX.EXCEPTION_OUTREACH_DASHBOARD_ACTION_NOTE_LEVEL_FISCAL_WEEK
+
+⸻
+
+Core Components and Scripts
+
+1. ExceptionOutreaches.sql
+
+Purpose:
+Provides direct access to the final dashboard table for validation or downstream consumption.
+
+SELECT * 
+FROM DL_RX_OPERATION.RX_OPS_SANDBOX.EXCEPTION_OUTREACH_DASHBOARD;
+
+Output Fields:
+
+Column	Description
+FISCAL_MONTH_NBR	Fiscal month number
+TOTAL_ACTION_NOTES	Total action notes logged
+TOTAL_RX_WITH_ACTION_NOTE	Total prescriptions tied to at least one action note
+TTL_INDUCTED	Total inducted prescriptions
+ONR_RATE	Order Not Ready rate
+STR	Scripts Through QV2 to Sold ratio
+AVERAGE_DAYS_TO_RESOLVE	Average time to resolve exception notes
+ONR_CHAIN, STR_CHAIN	Chain-level performance benchmarks
+
+
+⸻
+
+2. Exception_Outreach_Procedure.sql
+
+Purpose:
+Defines the stored procedure that constructs the Exception Outreach Dashboard and supporting summary tables.
+This procedure automates all data transformations, aggregations, and joins across curated Snowflake layers.
+
+Key Functional Sections:
+
+🧩 Step 1: Fiscal Context Initialization
+	•	Derives FISCAL_WEEK_START, FISCAL_WEEK_END, START_DATE, and END_DATE
+	•	Filters data to recent six months of activity
+
+🧱 Step 2: Base Table Creation
+	•	BASE_RX: Captures prescription fills and metadata
+	•	INDUCTED_RX: Tracks inducted prescriptions via PRESCRIPTION_FILL_ACTIVITY
+
+📊 Step 3: Aggregation Layers
+	•	ACTION_NOTE_VOLUME: Calculates total action notes and associated prescriptions
+	•	INDUCTED_SCRIPTS: Counts inducted prescriptions per fiscal month
+	•	EXCEPTION_OUTREACH_VOLUME: Combines metrics to compute action note ratios
+
+🔄 Step 4: ONR & STR Metrics
+	•	Joins with APP_OMNIRX.OMNI_DL.ONR_FINAL_TBL to calculate:
+	•	ONR_NUM, ONR_DEN, and ONR_RATE (Order Not Ready metrics)
+	•	STR (Script Sold Rate post-QV2)
+	•	Derives average days to resolve exception notes
+
+🏁 Step 5: Dashboard Materialization
+
+Creates multiple levels of output granularity:
+
+Table	Level	Description
+EXCEPTION_OUTREACH_DASHBOARD	Fiscal Month	Consolidated ONR/STR metrics and averages
+EXCEPTION_OUTREACH_DASHBOARD_ACTION_NOTE_LEVEL	Fiscal Month by Action Note Type	Breakdown by trigger and type
+EXCEPTION_OUTREACH_DASHBOARD_ACTION_NOTE_LEVEL_FISCAL_WEEK	Fiscal Week by Action Note Type	Granular weekly trends
+
+🔗 Step 6: Chain Benchmark Integration
+	•	CHAIN_ONR and SOLD_RATE temporary tables fetch chain-wide metrics
+	•	Adds ONR_CHAIN and STR_CHAIN ratios to the final dashboard
+
+⏱ Step 7: Inducted RX Volume (Weekly)
+	•	INDUCTED_RX_BY_FISCAL_WEEK summarizes weekly induction counts
+	•	Joins into the weekly action note-level dashboard
+
+Return Value:
+
+RETURN 'Task completed successfully';
+
+Procedure Execution Example:
+
+CALL Exception_Outreaches_Procedure();
+
+
+⸻
+
+3. Exception_Outreach_Scheduler.sql
+
+Purpose:
+Automates the weekly execution of the Exception Outreach Procedure using a Snowflake Task Scheduler.
+
+Task Definition:
+
+CREATE OR REPLACE TASK Exception_outreach_schedule
+  WAREHOUSE = WH_RX_QUERY_RXANALYTICS_01
+  SCHEDULE = 'USING CRON 15 2 * * 3 America/New_York'
+AS
+  CALL Exception_Outreaches_Procedure();
+
+Explanation:
+	•	Executes every Wednesday at 2:15 AM EST (07:15 UTC)
+	•	Refreshes the dashboard tables with the latest exception outreach and action note metrics
+	•	Can be resumed or paused as needed using:
+
+ALTER TASK Exception_outreach_schedule RESUME;
+ALTER TASK Exception_outreach_schedule SUSPEND;
+
+
+
+⸻
+
+Analytical Focus
+
+Metric Category	Description	Derived From
+Exception Volume	Total action notes and scripts requiring outreach	ACTION_NOTE_VOLUME, EXCEPTION_OUTREACH_VOLUME
+Resolution Efficiency	Avg. days to resolve by fiscal month/week	ACTION_NOTES_STEP2
+ONR Performance	Share of scripts marked “Order Not Ready”	STR_ONR_EXCEPTION_OUTREACHES
+STR Conversion	Rate of QV2 scripts sold within 14 days	SCRIPTS_SOLD, SCRIPTS_THROUGH_QV2
+Trigger Distribution	Counts by trigger type (SUPPRESS, SYSTEMATIC, OPTION-T, etc.)	ACTION_NOTES_STEP2
+Chain Benchmarks	Network-wide ONR and STR comparison metrics	CHAIN_ONR, SOLD_RATE
+
+
+⸻
+
+Appendix
+
+All files consolidated:
+
+File	Description
+ExceptionOutreaches.sql	Retrieves the final dashboard output
+Exception_Outreach_Procedure.sql	Defines data pipeline and aggregation logic
+Exception_Outreach_Scheduler.sql	Automates weekly refresh of dashboard metrics
+
+
+⸻
+
+Recommended GitHub Enhancements (Optional)
+
+You can add:
+	•	A data flow diagram (Procedure → Dashboard Tables → Visualization Layer)
+	•	Dashboard snapshots (Power BI / Tableau tiles) showing ONR, STR, and average resolution trends
+	•	A “Last Refreshed On” section in README linked to the Snowflake Task log
+
+⸻
+
+Would you like me to add a visual “Data Flow Overview” diagram in ASCII format (like the earlier one) showing how data flows from curated sources → procedure → dashboard tables → scheduler → visualization? It would make this README visually complete and GitHub-ready.
