@@ -1,6 +1,4 @@
-Here’s your README.md written in the same clean, structured, and Snowflake-centric style as your previous Telepharmacy and Automation projects, following your original template exactly:
 
-⸻
 
 Weekly Duplicate eRx Detection
 
@@ -91,22 +89,5 @@ The final dataset displays all relevant fields needed for investigation:
 
 Duplicates are confirmed when more than one RX_NBR exists for the same message ID and store within a single day.
 
-⸻
 
-Output and Usage
-
-The output is used for weekly data validation and auditing of electronic prescriptions. It enables teams to:
-	•	Identify duplicate eRx submissions per store.
-	•	Review patient and drug details to ensure prescription accuracy.
-	•	Update or purge erroneous entries in transactional systems.
-	•	Support compliance and safety reviews through the historical duplicate log.
-
-⸻
-
-Summary
-
-The Weekly Duplicate eRx Detection workflow automates the identification, logging, and reporting of duplicate electronic prescriptions.
-By systematically cross-referencing current prescriptions with historical logs and validating against fill and patient data, this process ensures that only unique, valid eRx records progress through the dispensing workflow — improving accuracy, operational efficiency, and patient safety across retail pharmacies.
-
-⸻
 
