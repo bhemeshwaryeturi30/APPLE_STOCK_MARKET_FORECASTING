@@ -1,1 +1,156 @@
+/* Query to pull data Deleted Scripts - with NDC and Price for each script */
 
+with CF_ACT as (
+SELECT 
+        XREF.STORE_NBR AS HOME_STORE_NBR
+       , XREF.FILL_NBR
+       , XREF.RX_NBR
+       ,MAX(WF.PROCESSING_STORE_NBR) AS CF_STORE_NBR
+       ,max(CASE WHEN WF.ACTIVITY_CD = 4 THEN WF.EFFECTIVE_TS ELSE NULL END) as Last_Verify_date
+       ,Max(CASE WHEN WF.ACTIVITY_CD = 202 THEN WF.EFFECTIVE_TS ELSE NULL END) AS LAST_CF_CHECKIN_DT
+       ,Max(CASE WHEN WF.ACTIVITY_CD = 203 THEN WF.EFFECTIVE_TS ELSE NULL END) AS LAST_CF_SHIPPED_DT
+       ,Max(CASE WHEN WF.ACTIVITY_CD IN (23,16) THEN WF.EFFECTIVE_TS ELSE NULL END) AS LAST_DELETE_DT
+       ,Max(CASE WHEN WF.ACTIVITY_CD = 8 THEN WF.EFFECTIVE_TS ELSE NULL END) AS LAST_RTS_DT
+       ,Max(CASE WHEN WF.ACTIVITY_CD = 14 THEN WF.EFFECTIVE_TS ELSE NULL END) AS LAST_TRANSFER_OUT_DT
+       ,Max(CASE WHEN WF.ACTIVITY_CD = 201 THEN WF.EFFECTIVE_TS ELSE NULL END) AS LAST_CF_DEL_DT
+FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_ACTIVITY AS WF
+JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF AS XREF
+    ON XREF.RXC_PRESCRIPTION_FILL_ID = WF.RXC_PRESCRIPTION_FILL_ID
+WHERE WF.ACTIVITY_CD IN (4,202,203,23,201,8,14,16) -- Required Activities
+AND YEAR(WF.EFFECTIVE_TS) >= 2025  -- add year numbers if needed
+AND XREF.REC_EFF_TS::DATE >= DATE'2024-12-01'
+GROUP BY 1,2,3
+HAVING LAST_CF_SHIPPED_DT IS NOT NULL 
+OR LAST_CF_CHECKIN_DT IS NOT NULL 
+OR LAST_CF_DEL_DT IS NOT NULL
+),
+
+-- PNP DATA FOR CF
+CF_PNP as (
+select 
+      b.rx_nbr 
+    , b.store_nbr AS CF_STORE_NBR 
+    , b.fill_nbr 
+    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
+    , STORE.RX_AREA_NBR AS DIVISION_NBR
+    , STORE.RX_REGION_NBR AS REGION_NBR
+    , STORE.RX_DISTRICT_NBR AS DISTRICT_NBR
+    , MAX(A.COURIER_NM) AS COURIER_NM
+    , MAX(C.TRACKING_NBR) AS TRACKING_NBR
+    , max(case when c.order_status_cd = 10 then c.rec_eff_ts else null end) as Order_date 
+    , max(case when c.order_status_cd = 2 then c.rec_eff_ts else null end) as Prep_Date
+    , max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Handoff_Date
+    , max(case when c.order_status_cd = 4 then c.rec_eff_ts else null end) as Delivered_Date
+    , max(case when c.order_status_cd = 8 then c.rec_eff_ts else null end) as Cancelled_Date
+    , max(case when c.order_status_cd = 14 then c.rec_eff_ts else null end) as Attempted_Delivery 
+    , max(case when c.order_status_cd = 20 then c.rec_eff_ts else null end) as Handoff_Failure
+from core_fssc.curated_orders.order_delivery as a 
+join core_fssc.curated_orders.order_delivery_item as b
+    on a.order_id = b.order_id
+    and a.store_nbr = b.store_nbr
+join (select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts
+          ,TRACKING_NBR
+      --history table does not have current record in it
+      from core_fssc.curated_orders.order_delivery_history -- tracks all the status a package goes through except the current status
+      union 
+      select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts
+          ,TRACKING_NBR
+      from core_fssc.curated_orders.order_delivery) as c -- tracks current status of a tranx
+    on a.order_id = c.order_id 
+    and a.store_nbr = c.store_nbr
+JOIN CORE_RX.CURATED_LOCATION.STORE AS STORE
+    ON CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER)=STORE.STORE_NBR
+WHERE c.order_status_cd IN (2,4,8,10,13,14,20) -- Only the required activities
+AND A.DELIVERY_SLA_CD='CF-STS' -- CF delivery code
+and A.rec_eff_ts ::DATE >= DATE'2024-12-01'
+group by 1,2,3,4,5,6,7
+),
+
+-- Get the last fill status information for not checked-in scripts from pf table and also pf_rt table
+CF_PF as (
+    SELECT
+    CF_NCHECKIN.HOME_STORE_NBR,
+    CF_NCHECKIN.RX_NBR,
+    CF_NCHECKIN.FILL_NBR,
+    SELLING_PRICE_AMT,
+    pf.rxc_prescription_fill_id,
+    pf.dispense_qty,
+    PF.NDC,
+    Max(CF_NCHECKIN.shipped_date) as Shipping_Date,
+    max(CF_NCHECKIN.LAST_DELETE_DT) as Act_delete_date,
+    max(CF_NCHECKIN.LAST_CF_DEL_DT) as CF_delete_date,
+    max(CF_NCHECKIN.Last_Verify_date) as CF_verify_date,
+    MAX(PF.REC_EFF_TS) AS LAST_PF_REC_EFF_TS,
+    MAX_BY(PF.FILL_STATUS_CD,PF.REC_EFF_TS) AS LAST_PF_FILL_STATUS_CD,
+    MAX_BY(PF.FILL_STATE_CD,PF.REC_EFF_TS) AS LAST_PF_FILL_STATE_CD,
+    MAX(PF_RT.KAFKA_LOAD_TS) AS LAST_PF_RT_LOAD_TS,
+    MAX_BY(PF_RT.FILL_STATUS_CD,PF_RT.KAFKA_LOAD_TS) AS LAST_PF_RT_FILL_STATUS_CD,
+    MAX_BY(PF_RT.FILL_STATE_CD,PF_RT.KAFKA_LOAD_TS) AS LAST_PF_RT_FILL_STATE_CD,
+    MAX_BY(WB.WAIT_BIN_LOCATION_CD,WB.CREATED_TS) as WAITING_BIN
+    
+    FROM (
+        SELECT HOME_STORE_NBR,RX_NBR,FILL_NBR,LAST_DELETE_DT,LAST_CF_DEL_DT,Last_Verify_date,max(LAST_CF_SHIPPED_DT) as shipped_date
+        FROM CF_ACT 
+        WHERE LAST_CF_SHIPPED_DT IS NOT NULL AND LAST_CF_CHECKIN_DT IS NULL 
+        --AND (LAST_CF_DEL_DT IS NULL OR LAST_CF_DEL_DT<LAST_CF_SHIPPED_DT)
+        AND (LAST_RTS_DT IS NULL OR LAST_RTS_DT<LAST_CF_SHIPPED_DT)
+        AND LAST_TRANSFER_OUT_DT IS NULL 
+        AND LAST_DELETE_DT IS not NULL 
+        and LAST_DELETE_DT> LAST_CF_SHIPPED_DT
+        group by 1,2,3,4,5,6
+               
+    ) AS CF_NCHECKIN
+    LEFT JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL AS PF
+    ON PF.REC_EFF_TS::DATE >= DATE'2024-12-01' AND PF.STORE_NBR = CF_NCHECKIN.HOME_STORE_NBR --- update date if need previous years data
+    AND PF.RX_NBR = CF_NCHECKIN.RX_NBR AND PF.FILL_NBR = CF_NCHECKIN.FILL_NBR
+    LEFT JOIN CORE_RX.CURATED_SCRIPT.RXC_PRESCRIPTION_FILL_RT AS PF_RT
+    ON PF_RT.KAFKA_LOAD_TS::DATE >= DATE'2024-12-01' AND PF_RT.STORE_NBR = CF_NCHECKIN.HOME_STORE_NBR --- update date if need previous years data
+    AND PF_RT.RX_NBR = CF_NCHECKIN.RX_NBR AND PF_RT.FILL_NBR = CF_NCHECKIN.FILL_NBR
+    left Join CORE_RX.CURATED_SCRIPT.WAITING_BIN_SLOT_CONTENTS as WB
+    ON WB.rxc_patient_id = PF.RXC_Patient_ID  
+    and wb.rx_nbr = PF.RX_NBR and wb.rx_fill_nbr = PF.FILL_NBR
+    and wb.store_nbr = PF.STORE_NBR
+    GROUP BY 1,2,3,4,5,6,7
+    having Act_delete_date is not null
+),
+
+-- JOIN ALL THE DATA
+CF_NCHECKIN_JOINED as (
+    SELECT 
+    CF_PF.*,
+    CASE 
+        WHEN CF_PF.LAST_PF_FILL_STATUS_CD = 7 THEN LAST_PF_REC_EFF_TS
+        WHEN CF_PF.LAST_PF_RT_FILL_STATUS_CD = 7 THEN LAST_PF_RT_LOAD_TS
+        ELSE NULL
+    END AS SOLD_DT,
+    CF_PNP.CF_STORE_NBR,
+    CF_PNP.DIVISION_NBR,
+    CF_PNP.REGION_NBR,
+    CF_PNP.DISTRICT_NBR,
+    CF_PNP.DELIVERED_DATE,
+    CF_PNP.CANCELLED_DATE,
+    CF_PNP.TRACKING_NBR,
+    CF_PNP.Prep_Date,
+    CF_PNP.Order_date
+    FROM CF_PF
+    LEFT JOIN CF_PNP
+    ON CF_PNP.HOME_STORE_NBR = CF_PF.HOME_STORE_NBR 
+    AND CF_PF.RX_NBR = CF_PNP.RX_NBR AND CF_PF.FILL_NBR = CF_PNP.FILL_NBR
+    and CF_PNP.TRACKING_NBR is not null
+    and CF_PNP.DELIVERED_DATE is not null
+)
+
+select * from CF_NCHECKIN_JOINED
+where TRACKING_NBR is not null
+and act_delete_date is not null
+--and DELIVERED_DATE is not null
+and NDC is not null
+and Order_date >= current_date() - 25
