@@ -1,1 +1,91 @@
 
+Here’s a concise, paragraph-style README.md file for both SQL codes you provided — written in the same structured format as your previous CVS Health documentation:
+
+⸻
+
+Central Fill Label Creation and Shipping Productivity Analysis
+
+This set of SQL scripts analyzes Central Fill (CF) order processing performance by capturing and summarizing key operational timestamps — specifically label creation and handoff/shipping completion — from CF order delivery systems. The data helps evaluate employee productivity, shipping patterns, and package throughput at the Central Fill level over different time periods (90-day and 30-day windows).
+
+⸻
+
+Overview
+
+The purpose of these queries is to measure and monitor workforce efficiency and package handling performance within CF facilities. The analysis identifies when labels are created, when packages are handed off for shipment, and which employees performed these actions. By aggregating order and employee information, the queries generate productivity metrics by store, fiscal week, employee, and hour of activity.
+
+⸻
+
+Workflow Logic
+
+SQL Code 1 – Label Creation and Shipping Details (90-Day Window)
+
+The first query extracts 90 days of CF order-level data to track when a package label was created and when it was shipped.
+
+Source Tables Used:
+	•	CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY
+	•	CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_ITEM
+	•	CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_HISTORY
+	•	CORE_RX.CURATED_SENSITIVE.EMPLOYEE
+
+Key Logic:
+	•	Filters only Central Fill to Store (CF-STS) deliveries.
+	•	Includes two key order events based on ORDER_STATUS_CD:
+	•	2: Label creation (Pack/Prep complete)
+	•	13: Handoff complete (Package shipped)
+	•	Uses LISTAGG to compile distinct user details (employee first name, last name, and job title).
+	•	Computes timestamps for Label Creation (LABEL_CREATION_TS) and Shipping (SHIPPING_TS) using conditional aggregation.
+
+Output Columns Include:
+	•	CF and Home Store numbers (CF_STORE_NBR, HOME_STORE_NBR)
+	•	TRACKING_NBR, COURIER_NM, and employee information
+	•	LABEL_CREATION_TS and SHIPPING_TS
+	•	WORK_HOUR (hour extracted from label creation timestamp)
+	•	PACKAGE_COUNT (distinct tracking numbers per CF store)
+
+This dataset provides a snapshot of shipping throughput and employee workload distribution over the past 90 days.
+
+⸻
+
+SQL Code 2 – Quarterly and Hourly Workforce Productivity (30-Day Window)
+
+The second query builds on the first by adding time segmentation (15-minute and hourly intervals) and integrating fiscal calendar data for weekly aggregation.
+
+Key Enhancements:
+	•	Extracts data for the last 30 days only.
+	•	Adds time-bucket labels:
+	•	EFFECTIVE_TS_QUARTER_LABEL (15-minute window)
+	•	HOUR_LABEL (hourly window)
+	•	Joins the CF data with CORE_FSSC.CURATED_CALENDAR.DAY to attach FISCAL_WEEK_NBR for reporting.
+	•	Calculates:
+	•	SCRIPT_CNT: Total number of unique scripts processed.
+	•	QUARTER_CNT: Number of distinct 15-minute intervals worked.
+	•	PACKAGE_COUNT: Total packages processed per employee.
+
+The final output aggregates results by fiscal week, date, and employee to compute:
+	•	TOTAL_PACKAGES: Total number of packages labeled by employee.
+	•	HOURS_WORKED: Derived as (QUARTER_CNT / 4) — representing total work hours based on quarter-hour intervals.
+
+Key Output Columns:
+	•	CF_STORE_NBR, FISCAL_WEEK_NBR, LABEL_CREATION_DATE
+	•	FIRST_NM_LIST, LAST_NM_LIST, COLLEAGUE_NAME
+	•	JOB_TITLE_LIST, TOTAL_PACKAGES, and HOURS_WORKED
+
+⸻
+
+Insights and Use Cases
+
+The combined output from these scripts allows leadership teams to:
+	•	Assess CF productivity trends by hour, day, and fiscal week.
+	•	Identify peak operational periods and staffing requirements.
+	•	Track employee-level performance for label creation and shipping efficiency.
+	•	Support process optimization by correlating work volume with courier and shift data.
+
+This analysis is foundational for operational reporting dashboards that monitor Central Fill workforce utilization, package flow, and time-to-ship performance across facilities.
+
+⸻
+
+Summary
+
+Together, these scripts enable comprehensive monitoring of Central Fill operations by linking order events, timestamps, and employee data. The first query captures detailed shipping and label activity, while the second translates this data into measurable productivity metrics by week and shift. The results support continuous improvement in CF fulfillment processes and workforce planning.
+
+⸻
