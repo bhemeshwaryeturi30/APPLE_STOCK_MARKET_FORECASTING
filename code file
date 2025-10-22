@@ -1,69 +1,182 @@
-with Zep_PrescFill
-as (
-select PF.store_nbr, PF.RX_nbr, PF.Fill_nbr,
-PF.rxc_prescription_fill_id,
-PF.RXC_patient_ID,PF.NDC,PF.fill_status_cd,PF.fill_state_cd,PF.Central_fill_ind,
-PF.promise_dt_cd,PF.promise_ts,PF.DRug_nm, PF.fill_status_dsc,
-MAX(PF.REC_EFF_TS) AS LAST_PF_REC_EFF_TS
-from CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL PF 
-where TO_DATE(PF.REC_EFF_TS) >= DATE '2025-08-01'  AND TO_DATE(PF.REC_EFF_TS) <= current_date()
-and PF.NDC in ('00002249580'	,
-'00002248480'	,
-'00002247180'	,
-'00002246080'	,
-'00002245780'	
-)
-and PF.store_nbr IN (11506,11507,11114,11339)
-GROUP BY all
-union all
-SELECT
-  HS.store_nbr,
-  HS.RX_nbr,
-  HS.Fill_nbr,
-  HS.rxc_prescription_fill_id,
-  HS.RXC_patient_ID,
-  HS.NDC,
-  HS.fill_status_cd,
-  HS.fill_state_cd,
-  HS.Central_fill_ind,
-  HS.promise_dt_cd,
-  HS.promise_ts,
-  HS.DRug_nm,
- -- HS.selling_price_amt,
-  HS.fill_status_dsc,
---  HS.TOTAL_VIAL_SCANNED_QTY,
---  HS.delete_reason_id,
---  HS.delete_comment_txt,
-  MAX(HS.REC_EFF_TS) AS LAST_HS_REC_EFF_TS
---  MAX_BY(HS.FILL_STATUS_CD,HS.REC_EFF_TS) AS LAST_HS_FILL_STATUS_CD,
---MAX_BY(HS.FILL_STATE_CD,hs.REC_EFF_TS) AS LAST_HS_FILL_STATE_CD,
-FROM
-  CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_HISTORY AS HS
-WHERE
-  TO_DATE (HS.REC_EFF_TS) >= CAST('2025-08-01' AS DATE)
-  AND TO_DATE (HS.REC_EFF_TS) <= CURRENT_DATE
-  AND HS.NDC IN (
-    '00002249580',
-    '00002248480',
-    '00002247180',
-    '00002246080',
-    '00002245780'
-  )
-  AND HS.store_nbr IN (11506, 11507, 11114, 11339)
-GROUP BY all
-)
- --all metrics calculations --
+sql code 1:
+/* 10 � order received 
+2 � pack/prep complete
+13- Handoff complete
+14 � Attempted Delivery
+4 � Delivered 
+8 � Cancelled
+*/
 
+WITH CF_PNP AS (
 select 
-cal.fiscal_year_nbr,
-cal.fiscal_week_nbr,
---date(zep.LAST_PF_REC_EFF_TS),
-store_nbr,
-count(distinct case when fill_status_cd = '7' then RXC_patient_ID else null end) as Patients_served,
-count ( distinct case when fill_status_cd = '7' then rxc_prescription_fill_id else null end) as Sold_prescp_count,
-count ( case when fill_status_cd= '8' then rxc_prescription_fill_id else null end) as OOS_prescrp_count
-from Zep_PrescFill zep
-join CORE_FSSC.CURATED_CALENDAR.DAY as cal
-on cal.date_dt = zep.LAST_PF_REC_EFF_TS ::Date
-where fill_status_cd in (7,8)
+      b.rx_nbr 
+    , b.store_nbr AS CF_STORE_NBR 
+    , b.fill_nbr 
+    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
+    , A.TRACKING_NBR
+    , A.COURIER_NM
+    , LISTAGG (distinct a.CREATE_USER_NM, ',') AS CREATE_USER_NM_LIST
+    , LISTAGG(distinct emp_det.first_nm, ',') AS FIRST_NM_LIST
+    , LISTAGG(distinct emp_det.last_nm ,',')  as Last_NM_LIST
+    , LISTAGG(distinct emp_det.JOB_TITLE_NM, ',') as Job_title_LIST
+    , max(case when c.order_status_cd = 2 then c.rec_eff_ts else null end) as label_Creation_TS
+    ,max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Shipping_TS
+    from core_fssc.curated_orders.order_delivery as a
+    join core_fssc.curated_orders.order_delivery_item as b
+    on a.order_id = b.order_id
+    and a.store_nbr = b.store_nbr
+     join (select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts 
+ 	  , TRACKING_NBR
+          , CREATE_USER_NM
+          , DELIVERY_SLA_CD
+          --history table does not have current record in it
+          from core_fssc.curated_orders.order_delivery_history 
+        union 
+           select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts 
+ 	      , TRACKING_NBR
+          , CREATE_USER_NM
+          , DELIVERY_SLA_CD
+         from core_fssc.curated_orders.order_delivery
+         where order_status_cd in (2,13)) as c  -- should be 13 as handoff status change 
+         
+    on a.order_id = c.order_id 
+    and a.store_nbr = c.store_nbr
+    and A.TRACKING_NBR = c.TRACKING_NBR
+left join CORE_RX.CURATED_SENSITIVE.EMPLOYEE as emp_det 
+on emp_det.EMPLOYEE_ID = c.CREATE_USER_NM
+WHERE 
+c.order_status_cd in (2,13)
+and a.DELIVERY_SLA_CD='CF-STS' -- CF delivery code
+AND TO_DATE(A.rec_eff_ts) >= (CURRENT_DATE() - 90) AND TO_DATE(A.rec_eff_ts) <= CURRENT_DATE()
+group by 1,2,3,4,5,6)
+
+
+
+
+SELECT 
+CF_STORE_NBR
+,HOME_STORE_NBR
+,rx_nbr 
+,fill_nbr 
+,TRACKING_NBR
+,TO_DATE(label_Creation_TS) as Label_creation_date
+,date_part(hour,label_Creation_TS) as work_hour
+,label_Creation_TS
+,Shipping_TS
+,COURIER_NM
+,CREATE_USER_NM_LIST
+,Job_title_LIST
+,Concat (FIRST_NM_LIST, ' ', Last_NM_LIST) as Colleague_name
+,count (distinct TRACKING_NBR) as Package_count
+FROM CF_PNP 
+WHERE TRACKING_NBR is not null
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+
+
+sql code 2:
+WITH CF_PNP AS (
+select 
+      b.rx_nbr 
+    , b.store_nbr AS CF_STORE_NBR 
+    , b.fill_nbr 
+    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
+    , A.TRACKING_NBR
+    , A.COURIER_NM
+     --  ,max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Shipping_TS
+   ,LPAD(TO_VARCHAR(DATE_PART('hour', c.rec_eff_ts)), 2, '0') || ':' ||
+      LPAD(FLOOR(DATE_PART('minute', c.rec_eff_ts) / 15) * 15, 2, '0') ||
+      '-' ||
+      LPAD(
+        CASE
+          WHEN DATE_PART('minute', c.rec_eff_ts) < 15 THEN 15
+          WHEN DATE_PART('minute', c.rec_eff_ts) < 30 THEN 30
+          WHEN DATE_PART('minute', c.rec_eff_ts) < 45 THEN 45
+          ELSE 0
+        END, 2, '0'
+      ) AS EFFECTIVE_TS_quarter_label
+    ,LPAD(TO_VARCHAR(DATE_PART('hour', c.rec_eff_ts)), 2, '0') || ':00-' ||
+    LPAD(TO_VARCHAR((DATE_PART('hour',c.rec_eff_ts) + 1) % 24), 2, '0') || ':00' AS hour_label
+   , max(case when c.order_status_cd = 2 then c.rec_eff_ts else null end) as label_Creation_TS
+    , LISTAGG (distinct a.CREATE_USER_NM, ',') AS CREATE_USER_NM_LIST
+    , LISTAGG(distinct emp_det.first_nm, ',') AS FIRST_NM_LIST
+    , LISTAGG(distinct emp_det.last_nm ,',')  as Last_NM_LIST
+    , LISTAGG(distinct emp_det.JOB_TITLE_NM, ',') as Job_title_LIST
+    from core_fssc.curated_orders.order_delivery as a
+    join core_fssc.curated_orders.order_delivery_item as b
+    on a.order_id = b.order_id
+    and a.store_nbr = b.store_nbr
+     join (select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts 
+ 	  , TRACKING_NBR
+          , CREATE_USER_NM
+          , DELIVERY_SLA_CD
+          --history table does not have current record in it
+          from core_fssc.curated_orders.order_delivery_history 
+        union 
+           select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts 
+ 	      , TRACKING_NBR
+          , CREATE_USER_NM
+          , DELIVERY_SLA_CD
+         from core_fssc.curated_orders.order_delivery
+         where order_status_cd in (2,13)) as c  -- should be 13 as handoff status change 
+         
+    on a.order_id = c.order_id 
+    and a.store_nbr = c.store_nbr
+    and A.TRACKING_NBR = c.TRACKING_NBR
+left join CORE_RX.CURATED_SENSITIVE.EMPLOYEE as emp_det 
+on emp_det.EMPLOYEE_ID = c.CREATE_USER_NM
+WHERE 
+c.order_status_cd in (2,13)
+and a.DELIVERY_SLA_CD='CF-STS' -- CF delivery code
+AND TO_DATE(A.rec_eff_ts) >= (CURRENT_DATE() - 30) AND TO_DATE(A.rec_eff_ts) <= CURRENT_DATE()
+group by 1,2,3,4,5,6,7,8),
+
+
+TEMP AS (
+SELECT
+ CF_STORE_NBR
+,CAL_DAY.FISCAL_WEEK_NBR
+,TO_DATE(label_Creation_TS) as Label_creation_date
+,CREATE_USER_NM_LIST
+,Job_title_LIST
+,hour_label
+,FIRST_NM_LIST
+,Last_NM_LIST
+,Concat (FIRST_NM_LIST, ' ', Last_NM_LIST) as Colleague_name
+,count (distinct TRACKING_NBR) as Package_count
+,COUNT(DISTINCT HOME_STORE_NBR,FILL_NBR,RX_NBR) AS SCRIPT_CNT
+,COUNT(DISTINCT EFFECTIVE_TS_quarter_label) AS QUATER_CNT
+FROM CF_PNP 
+JOIN CORE_FSSC.CURATED_CALENDAR.DAY AS CAL_DAY
+    ON CAL_DAY.DATE_DT = TO_DATE(Label_creation_date)
+    WHERE TRACKING_NBR is not null 
+  GROUP BY ALL
+)
+
+SELECT 
+CF_STORE_NBR
+,FISCAL_WEEK_NBR
+,Label_creation_date
+,Job_title_LIST
+,FIRST_NM_LIST
+,Last_NM_LIST
+,Colleague_name
+,sum(Package_count) as total_Packages
+,ROUND(SUM(QUATER_CNT)/4,1) AS HOURS_WORKED
+FROM TEMP 
 group by all
