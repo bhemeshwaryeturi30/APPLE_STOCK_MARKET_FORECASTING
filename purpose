@@ -1,7 +1,5 @@
 
-Here’s a concise, paragraph-style README.md file for both SQL codes you provided — written in the same structured format as your previous CVS Health documentation:
 
-⸻
 
 Central Fill Label Creation and Shipping Productivity Analysis
 
@@ -72,20 +70,4 @@ Key Output Columns:
 
 ⸻
 
-Insights and Use Cases
 
-The combined output from these scripts allows leadership teams to:
-	•	Assess CF productivity trends by hour, day, and fiscal week.
-	•	Identify peak operational periods and staffing requirements.
-	•	Track employee-level performance for label creation and shipping efficiency.
-	•	Support process optimization by correlating work volume with courier and shift data.
-
-This analysis is foundational for operational reporting dashboards that monitor Central Fill workforce utilization, package flow, and time-to-ship performance across facilities.
-
-⸻
-
-Summary
-
-Together, these scripts enable comprehensive monitoring of Central Fill operations by linking order events, timestamps, and employee data. The first query captures detailed shipping and label activity, while the second translates this data into measurable productivity metrics by week and shift. The results support continuous improvement in CF fulfillment processes and workforce planning.
-
-⸻
