@@ -1,1 +1,82 @@
 
+Here’s a clear, structured, and professional README.md file for your Zep_PrescFill SQL script — written in the same format and tone as your previous CVS Health documentation templates:
+
+⸻
+
+Zepbound Prescription Fill Performance Analysis
+
+This SQL script analyzes Zepbound (Tirzepatide) prescription activity across selected CVS Pharmacy stores to evaluate weekly performance trends, including patients served, sold prescriptions, and out-of-stock (OOS) metrics. It combines current and historical prescription fill data from curated sources to ensure complete visibility into recent dispensing activity.
+
+⸻
+
+Overview
+
+The purpose of this workflow is to track and assess Zepbound prescription fulfillment performance over time, focusing on both completed and out-of-stock transactions. The analysis helps operational teams monitor fill rates, identify supply challenges, and measure the patient impact at a store and fiscal-week level.
+
+The query extracts and aggregates prescription data for a specific set of National Drug Codes (NDCs) representing Zepbound SKUs across selected store numbers (11506, 11507, 11114, 11339) from August 1, 2025, to the current date.
+
+⸻
+
+Workflow Logic
+
+1. Zep_PrescFill (Prescription Data Consolidation)
+
+This section consolidates both current and historical prescription fill data using a UNION ALL approach to ensure complete capture of all relevant records.
+	•	Sources:
+	•	CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL – current prescription records.
+	•	CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_HISTORY – archived historical records.
+	•	Filters Applied:
+	•	Date range: 2025-08-01 through CURRENT_DATE.
+	•	Product scope: Five specific Zepbound NDCs (00002249580, 00002248480, 00002247180, 00002246080, 00002245780).
+	•	Store scope: Store numbers 11506, 11507, 11114, and 11339.
+	•	Key Fields Extracted:
+	•	Prescription identifiers: RX_NBR, FILL_NBR, RXC_PRESCRIPTION_FILL_ID, RXC_PATIENT_ID.
+	•	Product details: NDC, DRUG_NM, CENTRAL_FILL_IND.
+	•	Fulfillment metrics: FILL_STATUS_CD, FILL_STATE_CD, PROMISE_TS.
+	•	Audit timestamps: REC_EFF_TS, with MAX() used to retrieve the latest activity timestamp for each record.
+
+This ensures the dataset includes the most recent prescription status per fill event, avoiding duplicate or outdated records.
+
+⸻
+
+2. Final Aggregation and Metrics Calculation
+
+The second section aggregates weekly metrics by joining the prescription dataset with the fiscal calendar from CORE_FSSC.CURATED_CALENDAR.DAY.
+This allows alignment of prescription activities to CVS fiscal weeks for consistent business reporting.
+
+For each store and fiscal week, the query computes the following KPIs:
+	•	Patients_Served:
+The number of distinct patients (RXC_PATIENT_ID) whose prescriptions reached a fill status code of ‘7’ (Sold).
+	•	Sold_Prescp_Count:
+The number of distinct prescriptions (RXC_PRESCRIPTION_FILL_ID) successfully sold (status ‘7’).
+	•	OOS_Prescrp_Count:
+The number of prescriptions that reached a fill status code of ‘8’ (Out of Stock), representing unfilled demand.
+
+The results are grouped by:
+	•	Fiscal Year (FISCAL_YEAR_NBR)
+	•	Fiscal Week (FISCAL_WEEK_NBR)
+	•	Store Number (STORE_NBR)
+
+This enables clear week-over-week tracking of Zepbound performance by store.
+
+⸻
+
+Output and Insights
+
+The final dataset provides weekly store-level insights into Zepbound prescription performance:
+	•	Patient Reach: How many unique patients were successfully served.
+	•	Sales Volume: Total number of Zepbound prescriptions sold.
+	•	OOS Trends: Volume of prescriptions that could not be fulfilled due to supply constraints.
+
+These insights can be used to:
+	•	Identify supply shortages or fulfillment bottlenecks at specific locations.
+	•	Track sales and service trends for Zepbound over time.
+	•	Support inventory and demand forecasting for high-demand GLP-1 medications.
+
+⸻
+
+Summary
+
+The Zepbound Prescription Fill Performance Analysis query integrates both current and historical prescription data to deliver actionable weekly insights into sales, patient reach, and out-of-stock performance across targeted stores. By aligning data to the CVS fiscal calendar, the output supports consistent operational reporting and data-driven decision-making around inventory management and customer experience improvement.
+
+⸻
