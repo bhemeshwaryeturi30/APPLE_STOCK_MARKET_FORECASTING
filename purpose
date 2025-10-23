@@ -1,1 +1,101 @@
 
+Here’s a simple, paragraph-style README.md file for your PNP SFS Returns Automation Task and Procedure, written in the same clear and professional CVS format as your previous READMEs:
+
+⸻
+
+PNP SFS Returns Automation – Weekly Task and Stored Procedure
+
+This script automates the extraction, transformation, and loading (ETL) of Pick and Pack (PnP) Store Fulfillment Service (SFS) return data from CVS order delivery systems. It captures both completed and pending returns for mobile delivery orders and stores the output in a curated analytics table for operational reporting.
+
+⸻
+
+Overview
+
+The purpose of this workflow is to identify and monitor PnP SFS returns—specifically items marked as returned or missing after shipment. The automation runs weekly, ensuring the returns dataset remains up to date for store performance tracking and exception management.
+
+The process includes:
+	1.	Creating a temporary staging table to collect all SFS return-related data from core delivery systems.
+	2.	Populating a final returns table with completed and pending return records for the past 14 days.
+	3.	Scheduling the execution automatically using a Snowflake task that runs every Monday at 8 AM (Eastern Time).
+
+⸻
+
+Components
+
+1. Task Creation and Scheduling
+
+The script defines a Snowflake task:
+
+CREATE OR REPLACE TASK DL_RX_OPERATION.RX_OPS_SANDBOX.LOAD_PNP_SFS_RETURNS
+WAREHOUSE = WH_RX_QUERY_RXANALYTICS_01
+SCHEDULE = 'USING CRON 0 8 * * 1 America/New_York'
+AS CALL DL_RX_OPERATION.RX_OPS_SANDBOX.PNP_SFS_RETURNS_PROC();
+
+	•	Warehouse: Uses WH_RX_QUERY_RXANALYTICS_01 for efficient query execution.
+	•	Schedule: Runs automatically every Monday at 8:00 AM (EST).
+	•	Action: Executes the stored procedure PNP_SFS_RETURNS_PROC() to refresh the dataset.
+
+Additionally, the script resumes a related task REFRESH_MONDAY_EMAIL to align reporting dependencies.
+
+⸻
+
+2. Stored Procedure – PNP_SFS_RETURNS_PROC()
+
+This procedure orchestrates the return data extraction and table refresh.
+
+Steps within the procedure:
+
+a. Temporary Table Creation: DELIVERY_RX_PnP
+
+The procedure first creates a staging table to capture order and return details.
+It retrieves records from:
+	•	CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY
+	•	CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_ITEM
+	•	CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_HISTORY
+
+Logic Highlights:
+	•	Filters records from the past 14 days.
+	•	Limits to mobile SFS deliveries (DELIVERY_SLA_CD = 'SFS_Mobile') and order type 13 (indicating returns).
+	•	Calculates key timestamps:
+	•	Return_Completed → When order status = 5
+	•	Return_Yet_To_Be_Completed → When order status = 18
+	•	Classifies items based on cancellation reasons:
+	•	“Returned SKU” if cancellation reason contains RETURN
+	•	“Missing SKU” otherwise
+
+Fields Captured:
+	•	Order identifiers (OMS_ORDER_NBR, ORDER_ID, TRACKING_NBR)
+	•	Store and destination details (address, city, state)
+	•	Financials (ITEM_PRICE_AMT)
+	•	Status indicators and timestamps
+
+b. Final Table Creation: PNP_SFS_RETURNS
+
+A new permanent table is created to store finalized return data.
+Only records with a return completion or pending status are included.
+
+Final Output Columns:
+	•	Year and Week (for reporting period segmentation)
+	•	Store Number (STORE_NBR)
+	•	Address and destination details
+	•	Order and tracking identifiers
+	•	Return timestamps (Return_Completed, Return_Yet_To_Be_Completed)
+	•	Item price and classification
+
+⸻
+
+Automation and Output
+	•	Execution Frequency: Weekly (every Monday).
+	•	Retention Window: Last 14 days of return activity.
+	•	Purpose: Enables continuous monitoring of SFS mobile order returns for auditing, operational follow-up, and refund validation.
+	•	Output Table: DL_RX_OPERATION.RX_OPS_SANDBOX.PNP_SFS_RETURNS
+
+The refreshed dataset supports downstream dashboards and reports that provide visibility into return patterns, financial reconciliation, and fulfillment accuracy.
+
+⸻
+
+Summary
+
+The PNP SFS Returns Automation process ensures accurate and timely tracking of returned or missing mobile orders across CVS stores. By combining multiple delivery system sources and automating the weekly refresh, it streamlines operational reporting and provides actionable insights into SFS return trends and logistics performance.
+
+⸻
