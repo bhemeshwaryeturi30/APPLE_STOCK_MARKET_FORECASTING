@@ -1,1 +1,124 @@
 
+Here’s a clean, paragraph-style README.md file for your Drive-Thru Underutilization Automation Task and Stored Procedure, written in the same structured CVS Health format used in your previous documentation:
+
+⸻
+
+Drive-Thru (DT) Underutilization Weekly Automation
+
+This automated workflow identifies CVS Pharmacy locations with underutilized drive-thru (DT) prescription fulfillment lanes. By comparing weekly transaction data against historical performance, it highlights stores with unusually low drive-thru activity, supporting operations teams in investigating potential system, staffing, or customer behavior issues.
+
+⸻
+
+Overview
+
+The objective of this process is to monitor drive-thru utilization efficiency and identify stores with significant decreases in drive-thru transactions relative to their historical averages. The automation analyzes Point-of-Sale (POS) transaction data for both drive-thru and in-store channels, calculates utilization rates, and flags stores operating below threshold utilization levels.
+
+The process runs automatically every Monday at 3:15 PM Eastern Time, using the Snowflake task scheduler, and stores the results in a curated sandbox table for downstream reporting and alerting.
+
+⸻
+
+Components
+
+1. Scheduled Task: DT_UNDERUTILIZATION
+
+CREATE OR REPLACE TASK DL_RX_OPERATION.RX_OPS_SANDBOX.DT_UNDERUTILIZATION
+  WAREHOUSE = WH_RX_QUERY_RXANALYTICS_01
+  SCHEDULE = 'USING CRON 15 15 * * 1 America/New_York'
+  AS CALL DL_RX_OPERATION.RX_OPS_SANDBOX.DT_UNDERUTILIZATION_PROC();
+
+	•	Warehouse: Runs on WH_RX_QUERY_RXANALYTICS_01.
+	•	Frequency: Executes every Monday at 3:15 PM (Eastern).
+	•	Action: Calls the stored procedure DT_UNDERUTILIZATION_PROC() to process and refresh data.
+	•	The task is automatically resumed after creation to ensure continuous weekly operation.
+
+⸻
+
+2. Stored Procedure: DT_UNDERUTILIZATION_PROC()
+
+This procedure executes multiple steps to build a store-level utilization report.
+
+Step 1 – Date Range Setup
+
+Defines the previous week’s date range (Sunday–Saturday) and stores it in a temporary table DATE_RANGE.
+
+Step 2 – Historical Calendar and Transactions
+
+Creates:
+	•	CAL_HIST for historical calendar dates (3 months prior to current week).
+	•	TXN_HIST capturing completed POS transactions from the past 3 months where:
+	•	Event status = completed
+	•	Duration between 5 and 600 seconds
+	•	At least one prescription was sold
+	•	Location = INSTORE or DRIVE THRU
+	•	Store filters applied (e.g., exclude store ranges 16000–17999).
+
+Step 3 – Store Information
+
+Pulls active store attributes from CORE_RX.CURATED_LOCATION.STORE, including:
+	•	Store number, state, area, region, and district
+	•	District manager details (name and email)
+	•	Filters only open stores with an active drive-thru (DRIVE_THROUGH_IND = 'Y').
+
+Step 4 – Historical Utilization Calculation
+
+Builds the HIST_UTIL table that measures drive-thru utilization per store per day:
+	•	DT_TXN_COUNT: Drive-thru transactions
+	•	TXN_COUNT: Total transactions
+	•	DT_UTILIZATION: Drive-thru transaction ratio (DT_TXN_COUNT / TXN_COUNT)
+
+Step 5 – Statistical Benchmarks
+
+Computes store-level historical averages in HIST_STATS:
+	•	MEAN_UTIL = Average historical utilization
+	•	STDDEV_UTIL = Standard deviation across utilization history
+
+Step 6 – Current Week Calendar and Transactions
+
+Captures transactions from the current week (TXN1) using the same business filters as historical data for consistency.
+
+Step 7 – Final Report Generation
+
+The final table DT_UNDERUTILIZATION_REPORT aggregates all store-level data:
+	•	Joins historical statistics with current week’s activity
+	•	Calculates current utilization (DT_UTILIZATION)
+	•	Compares current utilization to historical patterns
+
+A store is flagged as underutilized if it meets any of these conditions:
+	•	DT_UTILIZATION = 0
+	•	DT_UTILIZATION < (MEAN_UTIL - 6 * STDDEV_UTIL)
+	•	DT_UTILIZATION < 0.05
+
+These thresholds capture both absolute inactivity and significant performance drops beyond normal variation.
+
+⸻
+
+Output
+
+Table Created:
+DL_RX_OPERATION.RX_OPS_SANDBOX.DT_UNDERUTILIZATION_REPORT
+
+Key Columns Include:
+	•	DATE_DT – Transaction date
+	•	STORE_NBR, STATE_CD, RX_AREA_NBR, RX_REGION_NBR, RX_DISTRICT_NBR
+	•	RX_DISTRICT_MANAGER_FIRST_NM, RX_DISTRICT_MANAGER_LAST_NM, RX_DISTRICT_MANAGER_EMAIL
+	•	DT_TXN_COUNT, IS_TXN_COUNT, TXN_COUNT
+	•	DT_UTILIZATION, MEAN_UTIL, STDDEV_UTIL
+
+Each record represents a store-day combination, providing granular insight into operational patterns across locations.
+
+⸻
+
+Insights and Use Cases
+
+The Drive-Thru Underutilization Report supports:
+	•	District and regional operations teams in identifying stores with sudden drive-thru traffic drops.
+	•	Performance analytics to correlate underutilization with staffing levels, outages, or workflow issues.
+	•	Continuous improvement initiatives to enhance patient convenience and throughput.
+
+⸻
+
+Summary
+
+The DT Underutilization Automation provides a consistent, data-driven way to identify and monitor drive-thru inefficiencies across CVS stores. Running weekly, it combines three months of historical context with recent operational data to detect deviations, enabling proactive resolution of store-level issues before they impact service quality or patient satisfaction.
+
+⸻
