@@ -1,8 +1,3 @@
-
-Here’s a clean, paragraph-style README.md file written in the same structured CVS Health documentation format as your previous ones. It summarizes the logic, flow, and purpose of the DEV Deprioritization Rates Automation process:
-
-⸻
-
 DEV Deprioritization Rates Automation
 
 This automated SQL process calculates and refreshes overall prescription deprioritization rates for the CVS pharmacy chain. The workflow runs weekly in the development (DEV) environment through Alation automation, executing every Wednesday at 10:30 AM. The results are then uploaded to Tableau on Thursday at 8 AM, allowing for data latency and Teradata processing time.
@@ -103,32 +98,4 @@ RIGHT JOIN MD_FINALRESULTSY37 ON ND.FISCAL = YD.FW
 
 The resulting dataset provides a week-by-week summary of deprioritization performance metrics across the chain.
 
-⸻
 
-Output Tables
-
-Table Name	Description	Type
-OVERALLDEPRIORRATE	Aggregated deprioritization counts by store and fiscal week	Permanent
-MD_FINALRESULTSN37	Non-deprioritized prescription counts (N)	Permanent
-MD_FINALRESULTSY37	Fully deprioritized prescription counts (Y)	Permanent
-MD_DEPRIOR_RATE	Final merged dataset used for Tableau reporting	Permanent
-
-
-⸻
-
-Insights and Use Cases
-	•	Deprioritization Trends: Track the frequency and consistency of deprioritization activity across stores.
-	•	Compliance Monitoring: Identify areas where verification steps may be skipped or deprioritized frequently.
-	•	Operational Benchmarking: Compare deprioritization rates across weeks or districts to detect process inefficiencies.
-	•	Quality Assurance: Ensure verification accuracy is maintained across retail and non-retail chains.
-
-⸻
-
-Summary
-
-The DEV Deprioritization Rates Automation provides an end-to-end analytical framework for monitoring prescription verification deprioritization across CVS stores.
-By automatically updating every week and integrating fiscal calendar alignment, it ensures timely, accurate insights for Tableau dashboards and management reporting.
-
-The process categorizes all fills into deprioritized (Y), not deprioritized (N), and partially deprioritized groups—delivering a holistic view of verification behavior and process adherence at both store and chain levels.
-
-⸻
