@@ -1,8 +1,3 @@
-
-Here’s a clean, paragraph-style README.md file for your Drive-Thru Underutilization Automation Task and Stored Procedure, written in the same structured CVS Health format used in your previous documentation:
-
-⸻
-
 Drive-Thru (DT) Underutilization Weekly Automation
 
 This automated workflow identifies CVS Pharmacy locations with underutilized drive-thru (DT) prescription fulfillment lanes. By comparing weekly transaction data against historical performance, it highlights stores with unusually low drive-thru activity, supporting operations teams in investigating potential system, staffing, or customer behavior issues.
@@ -88,37 +83,4 @@ A store is flagged as underutilized if it meets any of these conditions:
 	•	DT_UTILIZATION < (MEAN_UTIL - 6 * STDDEV_UTIL)
 	•	DT_UTILIZATION < 0.05
 
-These thresholds capture both absolute inactivity and significant performance drops beyond normal variation.
 
-⸻
-
-Output
-
-Table Created:
-DL_RX_OPERATION.RX_OPS_SANDBOX.DT_UNDERUTILIZATION_REPORT
-
-Key Columns Include:
-	•	DATE_DT – Transaction date
-	•	STORE_NBR, STATE_CD, RX_AREA_NBR, RX_REGION_NBR, RX_DISTRICT_NBR
-	•	RX_DISTRICT_MANAGER_FIRST_NM, RX_DISTRICT_MANAGER_LAST_NM, RX_DISTRICT_MANAGER_EMAIL
-	•	DT_TXN_COUNT, IS_TXN_COUNT, TXN_COUNT
-	•	DT_UTILIZATION, MEAN_UTIL, STDDEV_UTIL
-
-Each record represents a store-day combination, providing granular insight into operational patterns across locations.
-
-⸻
-
-Insights and Use Cases
-
-The Drive-Thru Underutilization Report supports:
-	•	District and regional operations teams in identifying stores with sudden drive-thru traffic drops.
-	•	Performance analytics to correlate underutilization with staffing levels, outages, or workflow issues.
-	•	Continuous improvement initiatives to enhance patient convenience and throughput.
-
-⸻
-
-Summary
-
-The DT Underutilization Automation provides a consistent, data-driven way to identify and monitor drive-thru inefficiencies across CVS stores. Running weekly, it combines three months of historical context with recent operational data to detect deviations, enabling proactive resolution of store-level issues before they impact service quality or patient satisfaction.
-
-⸻
