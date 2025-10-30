@@ -1,754 +1,131 @@
-SET START_DATE = DATE'2025-07-01';
-SET END_DATE = DATE'2025-07-31';
-SET YEAR_START = DATE'2025-01-01';
-
-
--- MONTHLY
-
-
-CREATE OR REPLACE TEMPORARY TABLE AD_MONTHLY AS
-SELECT
-"Month",
-Division,
-Region,
-District,
-store_nbr,
-JOB_ROLE,
-Offer_CNT_All,
-AD_CNT_All,
-cast (AD_cnt_all as decimal (10,5))/offer_cnt_all as AutoDisp_Rate,
-AVG_Prompt_TM
-
-FROM	
-(
-SELECT
-"Month",
-JOB_ROLE,
-Division,
-Region,
-District,
-store_nbr, 
-count (distinct (TRANSACTION_ID)) as OFFER_CNT_All,
-count (distinct (case when AUTODISP = 'AutoDisp' then TRANSACTION_ID end)) as AD_CNT_all,
-AVG(PRMPT_TM) as AVG_Prompt_TM
-FROM 
-( 
-  SELECT 
-  TO_DATE(TRUNC(A.TRANSACTION_START_TS, 'MM')) as "Month",
-  STR.RX_AREA_NBR AS Division,
-  STR.RX_REGION_NBR as Region,
-  STR.RX_DISTRICT_NBR as District,
-  A.STORE_NBR,
-  A.TRANSACTION_ID,
-  E.EMPLOYEE_ID,
-  E.FIRST_NM,
-  E.LAST_NM,
-  E.JOB_CODE,
-  E.JOB_TITLE_NM,
-  PRMPT.PROMPT_END_TS,
-  PRMPT.PROMPT_START_TS,
-//  (case when ((PRMPT.PROMPT_END_TS - PRMPT.PROMPT_START_TS) second (4)) < '5' then 'AutoDisp' else 'Other' end) as AUTODISP,
-  (case when (DATEDIFF('SECOND', PRMPT.PROMPT_START_TS, PRMPT.PROMPT_END_TS)) < 5 then 'AutoDisp' else 'Other' end) as AUTODISP,
-//  ((PRMPT.PROMPT_END_TS - PRMPT.PROMPT_START_TS) second (4)) as PRMPT_TM,
-  DATEDIFF('SECOND', PRMPT.PROMPT_START_TS, PRMPT.PROMPT_END_TS) AS PRMPT_TM,
-  CASE WHEN E.JOB_TITLE_NM IN (
-              'Pharmacy Lead Technician',
-              'Pharmacy Technician',              
-              'Inventory Specialist',                 
-              'Shift Supervisor RX',
-              'Pharmacy Intern - 5th Year',
-              'Pharmacy Intern - Grad',
-              'Pharmacy Intern - 3rd Year',
-              'Pharmacy Intern - 4th Year',
-              'Pharmacy Intern - 6th Year',
-              'Tech I RX Front End Spc Mail',
-              'Store Associate Rx',
-              'Store Associate',
-              'Pharmacy Technician Plus',
-              'Shift Supervisor Trainee',
-              'Operations Manager,Rx',
-              'Shift Supervisor',
-              'HC Concierge',
-              'Pharmacy Technician Team Ldr',
-              'Operations Supervisor RX',
-              'Operations Manager',
-              'Store Manager In Training',
-              'Cdr,District Perf',
-              'Store Manager-07',
-              'Store Manager, Rx',
-              'HC Concierge Covax Tech',
-              'International Pharmacy Intern',
-              'Operations Supervisor',
-              'Training Delivery',
-              'Tech I,FrontEnd Speclty Mail',
-              'Operations Manager-CA',
-              'Rx Delivery Driver',
-              'RX Tech,BE OCR',
-              'RX Tech,FE OCR',
-              'Rep I,Pharmacy Spclty Mail',
-              'Tech II,Pharmacy Front End',
-              'Store Ops Team Leader, RX',
-              'Tech I,Specialty Retail Assoc',
-              'Telepharmacy Technician',
-              'Tech I Clinical Support',
-              'Operations Manager-CA,Rx',
-              'Store Team Leader CA, Rx',
-              'Tech I,Specialty Mail',
-              'Tech,RX Call Center',
-              'Pharmacy Intern 3rd Year OCR',
-              'Rep II,Operations',
-              'Tech I,Compounding',
-              'Advanced RX Tech,BE OCR',
-              'Tech I,Prior Auth Operations',
-              'Training Store Manager, Rx',
-              'Coordinator,District Perf',
-              'Store Associate Seasonal',
-              'Rep I,Care',
-              'Store Team Leader, CA',
-              'Analyst,Account Manager',
-              'Mgr,Rx Prod Dev',
-              'Retail Management Intern',
-              'Asset Protection Coord,LP',
-              'Sr Pharm Tech-Call Center',
-              'District Admin Assistant',
-              'Training Store Manager - 08',
-              'Rep I Pharmacy Spclty Mail',
-              'Sr Cdr,Bus Config',
-              'Sr Cdr,Pricing',
-              'EAP Wklife Cust Support Assoc',
-              'Clerk OCR',
-              'Care Mgt Associate',
-              'Spvr,Clinical Services',
-              'Cdr,Data Administration',
-              'Cdr,Adjudication OCR',
-              'Tech,Field Tech Services',
-              'Cdr II,Clinical Ops',
-              'Tech I,Clinical Assist',
-              'Rep I,Benefits Specialty Mail',
-              'District Leader,Fld Mgt',
-              'Lead RX Tech,BE OCR',
-              'Answer Team Consultant Ops',
-              'Analyst,Application Dev',
-              'Customer Srvc Rep - HCB Ops',
-              'Field Colleague Trainer',
-              'Store Operations Team Leader',
-              'Analyst,FinRptg & Analysis',
-              'Pharmacy Intern 3rd Year',
-              'Tech I,Pharmacy Front End',
-              'Sr Cdr,Pharmacy',
-              'Cdr,Complaint & Appeals Ops',
-              'Tech I,Participant Services',
-              'Order Selector,Distribution',
-              'Office Assistant',
-              'Pharm Tech 2,Pick LTC',
-              'Cdr I,Enrollment',
-              'Mgr,Pharmacy Ops',
-              'Sales Support Specialist OCR',
-              'Service Advocate - Ops',
-              'Store Manager in Training,Rx',
-              'Clinical Services Consultant',
-              'Cdr I,Materials',
-              'Tech I,Spec Retail Assoc Cert',
-              'Beauty Sales Consultant',
-              'Analyst,IT Cust Serv',
-              'Store Manager, Rx. DL EL',
-              'Tech L1,Dispensing',
-              'Claim Benefit Specialist Ops',
-              'Specialty Retail Assoc,Pharma',
-              'Tech I,Certified Clin Support',
-              'Pcare Retail Assoc,Tech Level',
-              'HHC Clerk',
-              'Pharmacy Intern - 4th Yr NE St',
-              'Clerk II,Pharmacy Front End',
-              'Rep I,Clinical Services',
-              'Sr Claim Benefit Spec Ops',
-              'Analyst,Membership Ops',
-              'Cdr,Revenue Cycle',
-              'Inb/Outb Queue Assoc',
-              'Health Concierge Ops',
-              'Pharmacist Consultant OCR P/T',
-              'Rep I Pharmacy',
-              'Cdr,Talent Acquistion',
-              'CA Pharmacist Consultant OCR',
-              'Consultant, Projects AM',
-              'Training Store Mgr, Rx DL EL',
-              'Pharmacy Intern 5th Year OCR',
-              'Sr Cdr,Revenue Cycle',
-              'Sr Analyst,Pharmacy Ops',
-              'Cdr,Spec Inv Unit',
-              'Data and Analytics Consultant',
-              'Spvr,Specialty Pharm RPh',
-              'Tech II,Specialty Retail Cert',
-              'Pharmacy Program Manager',
-              'Rx Technician OCR',
-              'Administrative Assistant',
-              'Pharmacy Intern 5th Year',
-              'Rep,Pharmacy',
-              'Pharm Specialty Retail CA',
-              'Clinical Advisor Sales & AM',
-              'Rep I,Patient Care',
-              'Sr Analyst,Business Audit',
-              'Tech II,Prior Auth Operations',
-              'SimpleDose Pharmacy Technician',
-              'Pharm Tech 3,Cust Serv LTC',
-              'District Compliance Auditor-CA',
-              'FLDP I',
-              'Tech I,Certified Compounding',
-              'Stock Handler,Distribution',
-              'Pharmacy Intern 4th Year',
-              'Rx Intern - 6th Year,PBM',
-              'Pharm Tech 3,OE LTC',
-              'Operations Assistant I',
-              'Co-Manager',
-              'College Intern Associate',
-              'Spvr,Training Delivery',
-              'Service Advocate A1A-OPS',
-              'Underwriting Associate',
-              'SimpleDose Pharmacy Clerk',
-              'Fragrance Consultant',
-              'Rep I Medical Records',
-              'Beauty Advisor',
-              'Sr Analyst,Talent Acq Ops',
-              'Spvr,Specialty Pharmacy Svcs',
-              'Lead Hosp Delivery Concierge',
-              'Training Store Mgr-08 DL EL',
-              'Sr Assistant,Cust Relations',
-              'Mgr,District Asset Protection',
-              'HHC Leader',
-              'Analyst,Sales Opersations OCR',
-              'Pharm Tech 1,Stg LTC',
-              'Plan Sponsor Svc Cnslt Ops',
-              'Pharmacy Resident CA',
-              'Rep I,Clinical FEP',
-              'Ld Dir,Product Mgt & Dev',
-              'Sr Analyst,Account Mgt',
-              'Pharmacy Spvr,Fld Mgt DL EL',
-              'Store Manager-07, DL EL',
-              'Tech III,Specialty Retail Cert',
-              'Spvr,Resource Planning',
-              'Cdr,Prod Copywrite',
-              'Analyst,Case Mgt',
-              'Eligibility Cnslt-Electronic',
-              'Mgr,Workforce Initiatives',
-              'Analyst,Claims',
-              'Sr Tech,SpecRetail Assoc Cert',
-              'Sr Cdr,Clin Trials',
-              'Pharm Tech 4,IV LTC',
-              'Mgr,Corp Compliance',
-              'Analyst,Strat Marketing',
-              'Tech I Pharmacy Front End',
-              'Analyst,EAP Worklife',
-              'Pharmacy Tech-Call Center',
-              'Pharmacy Intern 6th Year OCR',
-              'Mgr,Safety & Envirmt',
-              'Sr Analyst,Store Operations',
-              'Gen Maintenance,Distribution',
-              'Training Program Owner III',
-              'Clinical Advisor',
-              'Analyst,Rx Ops',
-              'Analyst,FP&A',
-              'Tech I Case Review Unit',
-              'Customer Service Consultant',
-              'Mgr,Recruit Ops/Campaign CTS',
-              'Tech II,Specialty Retail',
-              'Mgr,Store Operations',
-              'District Admin,RX',
-              'Cdr,Patient Center',
-              'Beauty Advisor, yMas',
-              'Mgr,Regional Asset Protection'
-              )
-          THEN 'NON-RPH'
-      WHEN E.JOB_TITLE_NM IN (
-              'Pharmacy Manager',
-              'Pharmacy Manager, DL EL',
-              'Staff Pharmacist Floater PT',
-              'Staff Pharmacist FT',
-              'Staff Pharmacist Floater FT',
-              'Rx Mgr Emerging Leader',
-              'Staff Pharmacist PT',
-              'Night Pharmacist FT',
-              'CA Staff Pharmacist FT',
-              'CA Pharmacy Manager',
-              'Temporary PIC',
-              'CA Staff Pharmacist Floater FT',
-              'Rx Mgr Emerging Leader, CA',
-              'CA Staff Pharmacist Floater PT',
-              'CA Staff Pharmacist PT',
-              'CA Staff Pharmacist, Night FT',
-              'District Leader,Lic Fld Mgt',
-              'Pharmacist,Specialty',
-              'Rx Mgr Emerging Leader, PIC',
-              'Dispensing Pharmacist OCR',
-              'PIC/Team Leader FT',
-              'Pharmacist,Specialty Retail',
-              'Pharmacist',
-              'General Pharmacy Manager',
-              'Staff RPh, Floater Nght FT',
-              'RPh Advisor',
-              'CA Staff RPh Floater, Night FT',
-              'CA Pharmacy Manager, DL EL',
-              'Staff Pharmacist, Night PT',
-              'Clinical Pharmacist',
-              'Pharmacy Resident',
-              'CA Dispensing Pharmacist OCR',
-              'Pharmacist in Charge OCR',
-              'CIC Pharmacist OCR',
-              'Pharmacist Retail OCR',
-              'Rx Mgr Emerging Leader, PIC-CA',
-              'Pharmacist Consultant OCR',
-              'General Manager Pharmacist OCR',
-              'CA Staff Pharmacist, Night PT',
-              'Staff RPh, Floater Nght PT',
-              'Dispensing Pharmacist OCR P/T',
-              'Spvr,Pharmacy Ops RPh',
-              'Pharmacist MTC',
-              'Omnicell Pharmacist OCR',
-              'Clin RPh,Rx Expired Returns',
-              'Pharmacist Dispensing LTC',
-              'Dist Suppt Pharmacist PT',
-              'CA Dist Suppt Pharmacist PT',
-              'Dist Suppt Pharmacist FT',
-              'Dist Suppt Pharmacist Nght PT',
-              'CA Dist Suppt Pharmacist FT',
-              'Dist Supprt RPh CA Union FT',
-              'Distr Support Pharmacy Ldr',
-              'District Leader, RX',
-              'Distr Support Pharmacy Ldr CA',
-              'Dist Suppt Pharmacist Nght FT',
-              'CA Dist Suppt Pharmacist Nt FT',
-              'CA Staff Pharmacist, Night PT',
-              'Dist Support Pharm Mgr DLEL',
-              'Dist Supprt RPh CA Union Nt FT',
-              'Dist Support Pharm Mgr'
-              )
-      THEN 'RPH'
-      ELSE 'MISC' END AS JOB_ROLE        
-
-  FROM SEM_RX.COMMON_RX.POS_TS_ALL_TRANSACTION_DETAIL A
-  LEFT JOIN "CORE_RX"."CURATED_SENSITIVE"."EMPLOYEE" E
-    ON LPAD(A.EMPLOYEE_ID , 7, '0') = E.EMPLOYEE_ID                                  
-  INNER JOIN "APP_PS"."CORE_DUR"."DUR_STORES" S
-    ON A.STORE_NBR = S.STORE_NBR
-    AND A.TRANSACTION_START_TS >= P4_GO_LIVE_DT 
-    AND S.ACTIVE = 1
-  JOIN CORE_FSSC.CURATED_CALENDAR.DAY DAY_DT 
-    ON CAST(A.TRANSACTION_START_TS AS DATE) = DAY_DT.DATE_DT
-  INNER JOIN (
-    SELECT TRANSACTION_ID,
-        MIN(CASE WHEN EVENT_TYPE_NM = 'screen_entered' THEN EVENT_TS END) AS PROMPT_START_TS,
-        MAX(CASE WHEN EVENT_TYPE_NM = 'screen_exited' THEN EVENT_TS END) AS PROMPT_END_TS
-    FROM "CORE_RX"."CURATED_SCRIPT"."POS_EVENT_DETAIL"
-    WHERE SCREEN_NM IN ('dur-mandatory-counsel', 'dur_mandatory_counseling')
-    GROUP BY 1
-  )  PRMPT 
-    ON A.TRANSACTION_ID = PRMPT.TRANSACTION_ID
-  INNER JOIN "CORE_RX"."CURATED_LOCATION"."STORE" STR
-      ON A.STORE_NBR = STR.STORE_NBR
-      AND STR.RX_AREA_NBR in (1,2,3,4,5,7,8,9,12) 
-  WHERE 
-      TO_DATE(A.TRANSACTION_START_TS) between $START_DATE and $END_DATE	
-      AND A.EVENT_STATUS_IND = 'completed'
-      AND A.TOTAL_TRANSACTION_SECOND_CNT between 5 and 600
-      AND SCRIPT_SOLD_CNT > 0
-      AND A.LOCATION_CD in ('INSTORE','DRIVE THRU')
-      AND RX_FS_TRANSACTION_TYPE_NM in ('FS AND RX', 'RX ONLY')
-      GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
-) T1
-group by  1,2,3,4,5,6
-) T2
-group by 1,2,3,4,5,6,7,8,9,10;
-
-
-
-
-
-
----- YTD
-
-
-
-
-CREATE OR REPLACE TEMPORARY TABLE AD_YTD AS
-SELECT
-"Month",
-Division,
-Region,
-District,
-store_nbr,
-JOB_ROLE,
-Offer_CNT_All,
-AD_CNT_All,
-cast (AD_cnt_all as decimal (10,5))/offer_cnt_all as AutoDisp_Rate,
-AVG_Prompt_TM
-
-FROM	
-(
-SELECT
-"Month",
-JOB_ROLE,
-Division,
-Region,
-District,
-store_nbr, 
-count (distinct (TRANSACTION_ID)) as OFFER_CNT_All,
-count (distinct (case when AUTODISP = 'AutoDisp' then TRANSACTION_ID end)) as AD_CNT_all,
-AVG(PRMPT_TM) as AVG_Prompt_TM
-FROM 
-( 
-  SELECT 
-//  TO_DATE(TRUNC(A.TRANSACTION_START_TS, 'MM')) as "Month",
-  'YTD' AS "Month",
-  STR.RX_AREA_NBR AS Division,
-  STR.RX_REGION_NBR as Region,
-  STR.RX_DISTRICT_NBR as District,
-  A.STORE_NBR,
-  A.TRANSACTION_ID,
-  E.EMPLOYEE_ID,
-  E.FIRST_NM,
-  E.LAST_NM,
-  E.JOB_CODE,
-  E.JOB_TITLE_NM,
-  PRMPT.PROMPT_END_TS,
-  PRMPT.PROMPT_START_TS,
-//  (case when ((PRMPT.PROMPT_END_TS - PRMPT.PROMPT_START_TS) second (4)) < '5' then 'AutoDisp' else 'Other' end) as AUTODISP,
-  (case when (DATEDIFF('SECOND', PRMPT.PROMPT_START_TS, PRMPT.PROMPT_END_TS)) < 5 then 'AutoDisp' else 'Other' end) as AUTODISP,
-//  ((PRMPT.PROMPT_END_TS - PRMPT.PROMPT_START_TS) second (4)) as PRMPT_TM,
-  DATEDIFF('SECOND', PRMPT.PROMPT_START_TS, PRMPT.PROMPT_END_TS) AS PRMPT_TM,
-  CASE WHEN E.JOB_TITLE_NM IN (
-              'Pharmacy Lead Technician',
-              'Pharmacy Technician',              
-              'Inventory Specialist',                 
-              'Shift Supervisor RX',
-              'Pharmacy Intern - 5th Year',
-              'Pharmacy Intern - Grad',
-              'Pharmacy Intern - 3rd Year',
-              'Pharmacy Intern - 4th Year',
-              'Pharmacy Intern - 6th Year',
-              'Tech I RX Front End Spc Mail',
-              'Store Associate Rx',
-              'Store Associate',
-              'Pharmacy Technician Plus',
-              'Shift Supervisor Trainee',
-              'Operations Manager,Rx',
-              'Shift Supervisor',
-              'HC Concierge',
-              'Pharmacy Technician Team Ldr',
-              'Operations Supervisor RX',
-              'Operations Manager',
-              'Store Manager In Training',
-              'Cdr,District Perf',
-              'Store Manager-07',
-              'Store Manager, Rx',
-              'HC Concierge Covax Tech',
-              'International Pharmacy Intern',
-              'Operations Supervisor',
-              'Training Delivery',
-              'Tech I,FrontEnd Speclty Mail',
-              'Operations Manager-CA',
-              'Rx Delivery Driver',
-              'RX Tech,BE OCR',
-              'RX Tech,FE OCR',
-              'Rep I,Pharmacy Spclty Mail',
-              'Tech II,Pharmacy Front End',
-              'Store Ops Team Leader, RX',
-              'Tech I,Specialty Retail Assoc',
-              'Telepharmacy Technician',
-              'Tech I Clinical Support',
-              'Operations Manager-CA,Rx',
-              'Store Team Leader CA, Rx',
-              'Tech I,Specialty Mail',
-              'Tech,RX Call Center',
-              'Pharmacy Intern 3rd Year OCR',
-              'Rep II,Operations',
-              'Tech I,Compounding',
-              'Advanced RX Tech,BE OCR',
-              'Tech I,Prior Auth Operations',
-              'Training Store Manager, Rx',
-              'Coordinator,District Perf',
-              'Store Associate Seasonal',
-              'Rep I,Care',
-              'Store Team Leader, CA',
-              'Analyst,Account Manager',
-              'Mgr,Rx Prod Dev',
-              'Retail Management Intern',
-              'Asset Protection Coord,LP',
-              'Sr Pharm Tech-Call Center',
-              'District Admin Assistant',
-              'Training Store Manager - 08',
-              'Rep I Pharmacy Spclty Mail',
-              'Sr Cdr,Bus Config',
-              'Sr Cdr,Pricing',
-              'EAP Wklife Cust Support Assoc',
-              'Clerk OCR',
-              'Care Mgt Associate',
-              'Spvr,Clinical Services',
-              'Cdr,Data Administration',
-              'Cdr,Adjudication OCR',
-              'Tech,Field Tech Services',
-              'Cdr II,Clinical Ops',
-              'Tech I,Clinical Assist',
-              'Rep I,Benefits Specialty Mail',
-              'District Leader,Fld Mgt',
-              'Lead RX Tech,BE OCR',
-              'Answer Team Consultant Ops',
-              'Analyst,Application Dev',
-              'Customer Srvc Rep - HCB Ops',
-              'Field Colleague Trainer',
-              'Store Operations Team Leader',
-              'Analyst,FinRptg & Analysis',
-              'Pharmacy Intern 3rd Year',
-              'Tech I,Pharmacy Front End',
-              'Sr Cdr,Pharmacy',
-              'Cdr,Complaint & Appeals Ops',
-              'Tech I,Participant Services',
-              'Order Selector,Distribution',
-              'Office Assistant',
-              'Pharm Tech 2,Pick LTC',
-              'Cdr I,Enrollment',
-              'Mgr,Pharmacy Ops',
-              'Sales Support Specialist OCR',
-              'Service Advocate - Ops',
-              'Store Manager in Training,Rx',
-              'Clinical Services Consultant',
-              'Cdr I,Materials',
-              'Tech I,Spec Retail Assoc Cert',
-              'Beauty Sales Consultant',
-              'Analyst,IT Cust Serv',
-              'Store Manager, Rx. DL EL',
-              'Tech L1,Dispensing',
-              'Claim Benefit Specialist Ops',
-              'Specialty Retail Assoc,Pharma',
-              'Tech I,Certified Clin Support',
-              'Pcare Retail Assoc,Tech Level',
-              'HHC Clerk',
-              'Pharmacy Intern - 4th Yr NE St',
-              'Clerk II,Pharmacy Front End',
-              'Rep I,Clinical Services',
-              'Sr Claim Benefit Spec Ops',
-              'Analyst,Membership Ops',
-              'Cdr,Revenue Cycle',
-              'Inb/Outb Queue Assoc',
-              'Health Concierge Ops',
-              'Pharmacist Consultant OCR P/T',
-              'Rep I Pharmacy',
-              'Cdr,Talent Acquistion',
-              'CA Pharmacist Consultant OCR',
-              'Consultant, Projects AM',
-              'Training Store Mgr, Rx DL EL',
-              'Pharmacy Intern 5th Year OCR',
-              'Sr Cdr,Revenue Cycle',
-              'Sr Analyst,Pharmacy Ops',
-              'Cdr,Spec Inv Unit',
-              'Data and Analytics Consultant',
-              'Spvr,Specialty Pharm RPh',
-              'Tech II,Specialty Retail Cert',
-              'Pharmacy Program Manager',
-              'Rx Technician OCR',
-              'Administrative Assistant',
-              'Pharmacy Intern 5th Year',
-              'Rep,Pharmacy',
-              'Pharm Specialty Retail CA',
-              'Clinical Advisor Sales & AM',
-              'Rep I,Patient Care',
-              'Sr Analyst,Business Audit',
-              'Tech II,Prior Auth Operations',
-              'SimpleDose Pharmacy Technician',
-              'Pharm Tech 3,Cust Serv LTC',
-              'District Compliance Auditor-CA',
-              'FLDP I',
-              'Tech I,Certified Compounding',
-              'Stock Handler,Distribution',
-              'Pharmacy Intern 4th Year',
-              'Rx Intern - 6th Year,PBM',
-              'Pharm Tech 3,OE LTC',
-              'Operations Assistant I',
-              'Co-Manager',
-              'College Intern Associate',
-              'Spvr,Training Delivery',
-              'Service Advocate A1A-OPS',
-              'Underwriting Associate',
-              'SimpleDose Pharmacy Clerk',
-              'Fragrance Consultant',
-              'Rep I Medical Records',
-              'Beauty Advisor',
-              'Sr Analyst,Talent Acq Ops',
-              'Spvr,Specialty Pharmacy Svcs',
-              'Lead Hosp Delivery Concierge',
-              'Training Store Mgr-08 DL EL',
-              'Sr Assistant,Cust Relations',
-              'Mgr,District Asset Protection',
-              'HHC Leader',
-              'Analyst,Sales Opersations OCR',
-              'Pharm Tech 1,Stg LTC',
-              'Plan Sponsor Svc Cnslt Ops',
-              'Pharmacy Resident CA',
-              'Rep I,Clinical FEP',
-              'Ld Dir,Product Mgt & Dev',
-              'Sr Analyst,Account Mgt',
-              'Pharmacy Spvr,Fld Mgt DL EL',
-              'Store Manager-07, DL EL',
-              'Tech III,Specialty Retail Cert',
-              'Spvr,Resource Planning',
-              'Cdr,Prod Copywrite',
-              'Analyst,Case Mgt',
-              'Eligibility Cnslt-Electronic',
-              'Mgr,Workforce Initiatives',
-              'Analyst,Claims',
-              'Sr Tech,SpecRetail Assoc Cert',
-              'Sr Cdr,Clin Trials',
-              'Pharm Tech 4,IV LTC',
-              'Mgr,Corp Compliance',
-              'Analyst,Strat Marketing',
-              'Tech I Pharmacy Front End',
-              'Analyst,EAP Worklife',
-              'Pharmacy Tech-Call Center',
-              'Pharmacy Intern 6th Year OCR',
-              'Mgr,Safety & Envirmt',
-              'Sr Analyst,Store Operations',
-              'Gen Maintenance,Distribution',
-              'Training Program Owner III',
-              'Clinical Advisor',
-              'Analyst,Rx Ops',
-              'Analyst,FP&A',
-              'Tech I Case Review Unit',
-              'Customer Service Consultant',
-              'Mgr,Recruit Ops/Campaign CTS',
-              'Tech II,Specialty Retail',
-              'Mgr,Store Operations',
-              'District Admin,RX',
-              'Cdr,Patient Center',
-              'Beauty Advisor, yMas',
-              'Mgr,Regional Asset Protection'
-              )
-          THEN 'NON-RPH'
-      WHEN E.JOB_TITLE_NM IN (
-              'Pharmacy Manager',
-              'Pharmacy Manager, DL EL',
-              'Staff Pharmacist Floater PT',
-              'Staff Pharmacist FT',
-              'Staff Pharmacist Floater FT',
-              'Rx Mgr Emerging Leader',
-              'Staff Pharmacist PT',
-              'Night Pharmacist FT',
-              'CA Staff Pharmacist FT',
-              'CA Pharmacy Manager',
-              'Temporary PIC',
-              'CA Staff Pharmacist Floater FT',
-              'Rx Mgr Emerging Leader, CA',
-              'CA Staff Pharmacist Floater PT',
-              'CA Staff Pharmacist PT',
-              'CA Staff Pharmacist, Night FT',
-              'District Leader,Lic Fld Mgt',
-              'Pharmacist,Specialty',
-              'Rx Mgr Emerging Leader, PIC',
-              'Dispensing Pharmacist OCR',
-              'PIC/Team Leader FT',
-              'Pharmacist,Specialty Retail',
-              'Pharmacist',
-              'General Pharmacy Manager',
-              'Staff RPh, Floater Nght FT',
-              'RPh Advisor',
-              'CA Staff RPh Floater, Night FT',
-              'CA Pharmacy Manager, DL EL',
-              'Staff Pharmacist, Night PT',
-              'Clinical Pharmacist',
-              'Pharmacy Resident',
-              'CA Dispensing Pharmacist OCR',
-              'Pharmacist in Charge OCR',
-              'CIC Pharmacist OCR',
-              'Pharmacist Retail OCR',
-              'Rx Mgr Emerging Leader, PIC-CA',
-              'Pharmacist Consultant OCR',
-              'General Manager Pharmacist OCR',
-              'CA Staff Pharmacist, Night PT',
-              'Staff RPh, Floater Nght PT',
-              'Dispensing Pharmacist OCR P/T',
-              'Spvr,Pharmacy Ops RPh',
-              'Pharmacist MTC',
-              'Omnicell Pharmacist OCR',
-              'Clin RPh,Rx Expired Returns',
-              'Pharmacist Dispensing LTC',
-              'Dist Suppt Pharmacist PT',
-              'CA Dist Suppt Pharmacist PT',
-              'Dist Suppt Pharmacist FT',
-              'Dist Suppt Pharmacist Nght PT',
-              'CA Dist Suppt Pharmacist FT',
-              'Dist Supprt RPh CA Union FT',
-              'Distr Support Pharmacy Ldr',
-              'District Leader, RX',
-              'Distr Support Pharmacy Ldr CA',
-              'Dist Suppt Pharmacist Nght FT',
-              'CA Dist Suppt Pharmacist Nt FT',
-              'CA Staff Pharmacist, Night PT',
-              'Dist Support Pharm Mgr DLEL',
-              'Dist Supprt RPh CA Union Nt FT',
-              'Dist Support Pharm Mgr'
-              )
-      THEN 'RPH'
-      ELSE 'MISC' END AS JOB_ROLE        
-
-  FROM SEM_RX.COMMON_RX.POS_TS_ALL_TRANSACTION_DETAIL A
-  LEFT JOIN "CORE_RX"."CURATED_SENSITIVE"."EMPLOYEE" E
-    ON LPAD(A.EMPLOYEE_ID , 7, '0') = E.EMPLOYEE_ID                                  
-  INNER JOIN "APP_PS"."CORE_DUR"."DUR_STORES" S
-    ON A.STORE_NBR = S.STORE_NBR
-    AND A.TRANSACTION_START_TS >= P4_GO_LIVE_DT 
-    AND S.ACTIVE = 1
-  JOIN CORE_FSSC.CURATED_CALENDAR.DAY DAY_DT 
-    ON CAST(A.TRANSACTION_START_TS AS DATE) = DAY_DT.DATE_DT
-  INNER JOIN (
-    SELECT TRANSACTION_ID,
-        MIN(CASE WHEN EVENT_TYPE_NM = 'screen_entered' THEN EVENT_TS END) AS PROMPT_START_TS,
-        MAX(CASE WHEN EVENT_TYPE_NM = 'screen_exited' THEN EVENT_TS END) AS PROMPT_END_TS
-    FROM "CORE_RX"."CURATED_SCRIPT"."POS_EVENT_DETAIL"
-    WHERE SCREEN_NM IN ('dur-mandatory-counsel', 'dur_mandatory_counseling')
-    GROUP BY 1
-  )  PRMPT 
-    ON A.TRANSACTION_ID = PRMPT.TRANSACTION_ID
-  INNER JOIN "CORE_RX"."CURATED_LOCATION"."STORE" STR
-      ON A.STORE_NBR = STR.STORE_NBR
-      AND STR.RX_AREA_NBR in (1,2,3,4,5,7,8,9,12) 
-  WHERE 
-      TO_DATE(A.TRANSACTION_START_TS) between $YEAR_START and $END_DATE		
-      AND A.EVENT_STATUS_IND = 'completed'
-      AND A.TOTAL_TRANSACTION_SECOND_CNT between 5 and 600
-      AND SCRIPT_SOLD_CNT > 0
-      AND A.LOCATION_CD in ('INSTORE','DRIVE THRU')
-      AND RX_FS_TRANSACTION_TYPE_NM in ('FS AND RX', 'RX ONLY')
-      GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
-) T1
-group by  1,2,3,4,5,6
-) T2
-group by 1,2,3,4,5,6,7,8,9,10;
-
-
-
-
-
--------------
--- NON RPH --
--------------
-
-SELECT *
-FROM AD_MONTHLY
-WHERE JOB_ROLE = 'NON-RPH';
-
-
-
-SELECT *
-FROM AD_YTD
-WHERE JOB_ROLE = 'NON-RPH';
-
-
-------------------------------------
-
-
-csv file format for the above code is:
-
-Database	Schema	Base Table Name	Attributes Needed
-SEM_RX	COMMON_RX	POS_TS_ALL_TRANSACTION_DETAIL	TRANSACTION_START_TS, STORE_NBR, TRANSACTION_ID, EMPLOYEE_ID, EVENT_STATUS_IND, TOTAL_TRANSACTION_SECOND_CNT, SCRIPT_SOLD_CNT, LOCATION_CD, RX_FS_TRANSACTION_TYPE_NM
-CORE_RX	CURATED_SENSITIVE	EMPLOYEE	EMPLOYEE_ID, FIRST_NM, LAST_NM, JOB_CODE, JOB_TITLE_NM
-APP_PS	CORE_DUR	DUR_STORES	STORE_NBR, P4_GO_LIVE_DT, ACTIVE
-CORE_FSSC	CURATED_CALENDAR	DAY	DATE_DT
-CORE_RX	CURATED_SCRIPT	POS_EVENT_DETAIL	TRANSACTION_ID, EVENT_TYPE_NM, EVENT_TS, SCREEN_NM
-CORE_RX	CURATED_LOCATION	STORE	STORE_NBR, RX_AREA_NBR, RX_REGION_NBR, RX_DISTRICT_NBR
+CREATE OR REPLACE PROCEDURE LOAD_CF_QDEPTH_DATA_PROC()
+RETURNS STRING
+LANGUAGE SQL
+EXECUTE AS CALLER
+AS
+$$
+BEGIN
+    -- Add error handling
+    BEGIN
+        -- Multiple CTEs
+        INSERT INTO DL_RX_OPERATION.RX_OPS_SANDBOX.CF_QDEPTH_MASTER
+        WITH CF_SCRIPTS AS (
+        SELECT
+            CF_STR.CF_STORE_NBR, 
+            PF_RT.CREATE_TS,
+            PF_RT.KAFKA_LOAD_TS,
+            PF_RT.LAST_UPDATED_TS,
+            PF_RT.RXC_PRESCRIPTION_FILL_ID,
+            PF_RT.STORE_NBR,
+            PF_RT.FILL_NBR,
+            PF_RT.RX_NBR,
+            PF_RT.CENTRAL_FILL_STATUS_CD,
+            PF_RT.CF_EXPECTED_DELIVERY_TS,
+            PF_RT.CF_STATUS_UPDATED_TS,
+            PF_RT.FILL_TS,
+            PF_RT.FILL_SOURCE_CD,
+            PF_RT.FILL_STATE_CD,
+            PF_RT.FILL_STATUS_CD,
+            PF_RT.NDC,
+            PF_RT.PROMISE_TS,
+            CF_RX.REC_EFF_TS AS CF_RX_REC_EFF_TS,
+            CF_RX.IS_IN_HOLDING_QUEUE_IND,
+            CF_RX.HOLDING_QUEUE_IN_TS,
+            CF_RX.HOLDING_QUEUE_OUT_TS,
+            RANK() OVER(PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ORDER BY PF_RT.KAFKA_LOAD_TS DESC,PF_RT.LAST_UPDATED_TS DESC, PF_RT.CREATE_TS DESC) AS RANK_NUM
+        FROM CORE_RX.CURATED_SCRIPT.RXC_PRESCRIPTION_FILL_RT AS PF_RT
+        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.CF_ACTIVE_STORES AS CF_STR
+            ON PF_RT.STORE_NBR = CF_STR.STORE_NBR
+            AND (TO_DATE(CF_STR.ADD_DATE) <= TO_DATE(PF_RT.KAFKA_LOAD_TS) 
+            OR TO_DATE(CF_STR.ADD_DATE) <= TO_DATE(PF_RT.CREATE_TS))
+        LEFT JOIN CORE_RX.CURATED_SCRIPT.CENTRAL_FILL_RX_ASSIGNMENT AS CF_RX
+            ON PF_RT.RXC_PRESCRIPTION_FILL_ID = CF_RX.PRESCRIPTION_FILL_ID
+        WHERE PF_RT.KAFKA_LOAD_TS::DATE >= CURRENT_DATE() - 60
+        QUALIFY COUNT_IF(PF_RT.CENTRAL_FILL_STATUS_CD IS NOT NULL) OVER (PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ) > 0 
+        AND COUNT_IF(PF_RT.FILL_STATE_CD=3) OVER (PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ) = 0 
+        ),
+        CF_SCRIPTS_LATEST AS (
+        SELECT DISTINCT
+            CF_SCRIPTS.*,
+            DIM_STS.RX_FILL_STATUS_DSC,
+            DIM_CF_STS.CENTRAL_FILL_STATUS_DSC,
+            CASE 
+                WHEN CF_SCRIPTS.FILL_STATUS_CD IN (1,2,3,4,32) THEN 'QP'
+                WHEN CF_SCRIPTS.FILL_STATUS_CD IN (122,123) THEN 'QV'
+            ELSE 'OTHER'
+            END AS QUEUE_NAME
+        FROM CF_SCRIPTS
+        LEFT JOIN CORE_RX.CURATED_SCRIPT.DIM_RX_FILL_STATUS AS DIM_STS
+            ON DIM_STS.RX_FILL_STATUS_CD = CF_SCRIPTS.FILL_STATUS_CD
+        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.DIM_CENTRAL_FILL_STATUS AS DIM_CF_STS
+            ON DIM_CF_STS.CENTRAL_FILL_STATUS_CD = CF_SCRIPTS.CENTRAL_FILL_STATUS_CD
+        WHERE CF_SCRIPTS.RANK_NUM = 1 AND CF_STORE_NBR IS NOT NULL
+        ),
+        CF_SCRIPTS_WORKED AS (
+        SELECT 
+            CF_SCRIPTS.CF_STORE_NBR,
+            CF_SCRIPTS.STORE_NBR,
+            CF_SCRIPTS.RX_NBR,
+            CF_SCRIPTS.FILL_NBR,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 134 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_READY_TO_SHIP_TS,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 123 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_QV2_ENTER_TS,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 132 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_SHIPPED_TS,
+            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD IN (1,2,3,4,32) THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_QP_TS,
+            MAX_BY(CENTRAL_FILL_STATUS_CD,CF_SCRIPTS.KAFKA_LOAD_TS) AS LAST_CENTRAL_FILL_STATUS_CD
+        FROM CF_SCRIPTS
+        WHERE CF_STORE_NBR IS NOT NULL
+        GROUP BY ALL),
+        FINAL AS (
+        SELECT 
+        CONVERT_TIMEZONE('UTC', 'America/New_York', CURRENT_TIMESTAMP()) AS RECORD_TS_EST,
+        CF_SCRIPTS_LATEST.*,
+        CF_SCRIPTS_WORKED.LAST_READY_TO_SHIP_TS,
+        CF_SCRIPTS_WORKED.LAST_QV2_ENTER_TS,
+        CF_SCRIPTS_WORKED.LAST_SHIPPED_TS,
+        CF_SCRIPTS_WORKED.LAST_QP_TS,
+        CF_SCRIPTS_WORKED.LAST_CENTRAL_FILL_STATUS_CD
+        FROM CF_SCRIPTS_LATEST
+        JOIN CF_SCRIPTS_WORKED
+            ON CF_SCRIPTS_WORKED.STORE_NBR = CF_SCRIPTS_LATEST.STORE_NBR
+            AND CF_SCRIPTS_WORKED.RX_NBR = CF_SCRIPTS_LATEST.RX_NBR
+            AND CF_SCRIPTS_WORKED.FILL_NBR = CF_SCRIPTS_LATEST.FILL_NBR
+            AND CF_SCRIPTS_WORKED.CF_STORE_NBR = CF_SCRIPTS_LATEST.CF_STORE_NBR
+        WHERE CF_SCRIPTS_LATEST.LAST_UPDATED_TS::DATE >= CURRENT_DATE() - 3)
+        SELECT
+            RECORD_TS_EST,
+            CF_STORE_NBR,
+            CREATE_TS,
+            KAFKA_LOAD_TS,
+            RXC_PRESCRIPTION_FILL_ID,
+            STORE_NBR,
+            FILL_NBR,
+            RX_NBR,
+            CENTRAL_FILL_STATUS_CD,
+            CF_EXPECTED_DELIVERY_TS,
+            CF_STATUS_UPDATED_TS,
+            FILL_TS,
+            FILL_SOURCE_CD,
+            FILL_STATE_CD,
+            FILL_STATUS_CD,
+            NDC,
+            PROMISE_TS,
+            CF_RX_REC_EFF_TS,
+            IS_IN_HOLDING_QUEUE_IND,
+            HOLDING_QUEUE_IN_TS,
+            HOLDING_QUEUE_OUT_TS,
+            RANK_NUM,
+            RX_FILL_STATUS_DSC,
+            CENTRAL_FILL_STATUS_DSC,
+            QUEUE_NAME,
+            LAST_UPDATED_TS,
+            LAST_READY_TO_SHIP_TS,
+            LAST_QV2_ENTER_TS,
+            LAST_SHIPPED_TS,
+            LAST_QP_TS,
+            LAST_CENTRAL_FILL_STATUS_CD
+        FROM FINAL;
+    END;
+    
+    RETURN 'CF QDEPTH Procedure executed successfully';
+END;
+$$;
