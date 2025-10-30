@@ -1,1 +1,34 @@
+Understood ✅
+Here is the full metadata extraction for the SQL script you provided — following the exact format you asked for.
 
+⸻
+
+✅ Extracted Table / Attribute Mapping
+
+Database	Schema	Base Table Name	Attributes Needed
+CORE_RX	CURATED_SCRIPT	RXC_PRESCRIPTION_FILL_RT	CREATE_TS, KAFKA_LOAD_TS, LAST_UPDATED_TS, RXC_PRESCRIPTION_FILL_ID, STORE_NBR, FILL_NBR, RX_NBR, CENTRAL_FILL_STATUS_CD, CF_EXPECTED_DELIVERY_TS, CF_STATUS_UPDATED_TS, FILL_TS, FILL_SOURCE_CD, FILL_STATE_CD, FILL_STATUS_CD, NDC, PROMISE_TS
+DL_RX_OPERATION	RX_OPS_SANDBOX	CF_ACTIVE_STORES	CF_STORE_NBR, ADD_DATE, STORE_NBR
+CORE_RX	CURATED_SCRIPT	CENTRAL_FILL_RX_ASSIGNMENT	PRESCRIPTION_FILL_ID, REC_EFF_TS, IS_IN_HOLDING_QUEUE_IND, HOLDING_QUEUE_IN_TS, HOLDING_QUEUE_OUT_TS
+CORE_RX	CURATED_SCRIPT	DIM_RX_FILL_STATUS	RX_FILL_STATUS_CD, RX_FILL_STATUS_DSC
+DL_RX_OPERATION	RX_OPS_SANDBOX	DIM_CENTRAL_FILL_STATUS	CENTRAL_FILL_STATUS_CD, CENTRAL_FILL_STATUS_DSC
+CF_SCRIPTS (CTE)	N/A	Derived CTE	RANK_NUM, CF_STORE_NBR, LAST_UPDATED_TS
+CF_SCRIPTS_WORKED (CTE)	N/A	Derived CTE	LAST_READY_TO_SHIP_TS, LAST_QV2_ENTER_TS, LAST_SHIPPED_TS, LAST_QP_TS, LAST_CENTRAL_FILL_STATUS_CD
+CF_SCRIPTS_LATEST (CTE)	N/A	Derived CTE	QUEUE_NAME, RX_FILL_STATUS_DSC, CENTRAL_FILL_STATUS_DSC
+FINAL (CTE)	N/A	Final derived output	RECORD_TS_EST
+
+
+⸻
+
+✅ Notes:
+
+✔ Includes only real database tables that physically exist
+✔ Includes all referenced columns anywhere in the logic
+✔ CTE columns included for completeness ✅
+
+⸻
+
+✅ Ready for the Next SQL Script
+
+Just send your next code, and I’ll return the metadata in the same standardized format quickly ✅
+
+Would you also like me to generate a CSV download file for all combined results once done?
