@@ -1,131 +1,119 @@
-CREATE OR REPLACE PROCEDURE LOAD_CF_QDEPTH_DATA_PROC()
-RETURNS STRING
-LANGUAGE SQL
-EXECUTE AS CALLER
-AS
-$$
-BEGIN
-    -- Add error handling
-    BEGIN
-        -- Multiple CTEs
-        INSERT INTO DL_RX_OPERATION.RX_OPS_SANDBOX.CF_QDEPTH_MASTER
-        WITH CF_SCRIPTS AS (
-        SELECT
-            CF_STR.CF_STORE_NBR, 
-            PF_RT.CREATE_TS,
-            PF_RT.KAFKA_LOAD_TS,
-            PF_RT.LAST_UPDATED_TS,
-            PF_RT.RXC_PRESCRIPTION_FILL_ID,
-            PF_RT.STORE_NBR,
-            PF_RT.FILL_NBR,
-            PF_RT.RX_NBR,
-            PF_RT.CENTRAL_FILL_STATUS_CD,
-            PF_RT.CF_EXPECTED_DELIVERY_TS,
-            PF_RT.CF_STATUS_UPDATED_TS,
-            PF_RT.FILL_TS,
-            PF_RT.FILL_SOURCE_CD,
-            PF_RT.FILL_STATE_CD,
-            PF_RT.FILL_STATUS_CD,
-            PF_RT.NDC,
-            PF_RT.PROMISE_TS,
-            CF_RX.REC_EFF_TS AS CF_RX_REC_EFF_TS,
-            CF_RX.IS_IN_HOLDING_QUEUE_IND,
-            CF_RX.HOLDING_QUEUE_IN_TS,
-            CF_RX.HOLDING_QUEUE_OUT_TS,
-            RANK() OVER(PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ORDER BY PF_RT.KAFKA_LOAD_TS DESC,PF_RT.LAST_UPDATED_TS DESC, PF_RT.CREATE_TS DESC) AS RANK_NUM
-        FROM CORE_RX.CURATED_SCRIPT.RXC_PRESCRIPTION_FILL_RT AS PF_RT
-        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.CF_ACTIVE_STORES AS CF_STR
-            ON PF_RT.STORE_NBR = CF_STR.STORE_NBR
-            AND (TO_DATE(CF_STR.ADD_DATE) <= TO_DATE(PF_RT.KAFKA_LOAD_TS) 
-            OR TO_DATE(CF_STR.ADD_DATE) <= TO_DATE(PF_RT.CREATE_TS))
-        LEFT JOIN CORE_RX.CURATED_SCRIPT.CENTRAL_FILL_RX_ASSIGNMENT AS CF_RX
-            ON PF_RT.RXC_PRESCRIPTION_FILL_ID = CF_RX.PRESCRIPTION_FILL_ID
-        WHERE PF_RT.KAFKA_LOAD_TS::DATE >= CURRENT_DATE() - 60
-        QUALIFY COUNT_IF(PF_RT.CENTRAL_FILL_STATUS_CD IS NOT NULL) OVER (PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ) > 0 
-        AND COUNT_IF(PF_RT.FILL_STATE_CD=3) OVER (PARTITION BY PF_RT.STORE_NBR,PF_RT.RX_NBR,PF_RT.FILL_NBR ) = 0 
-        ),
-        CF_SCRIPTS_LATEST AS (
-        SELECT DISTINCT
-            CF_SCRIPTS.*,
-            DIM_STS.RX_FILL_STATUS_DSC,
-            DIM_CF_STS.CENTRAL_FILL_STATUS_DSC,
-            CASE 
-                WHEN CF_SCRIPTS.FILL_STATUS_CD IN (1,2,3,4,32) THEN 'QP'
-                WHEN CF_SCRIPTS.FILL_STATUS_CD IN (122,123) THEN 'QV'
-            ELSE 'OTHER'
-            END AS QUEUE_NAME
-        FROM CF_SCRIPTS
-        LEFT JOIN CORE_RX.CURATED_SCRIPT.DIM_RX_FILL_STATUS AS DIM_STS
-            ON DIM_STS.RX_FILL_STATUS_CD = CF_SCRIPTS.FILL_STATUS_CD
-        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.DIM_CENTRAL_FILL_STATUS AS DIM_CF_STS
-            ON DIM_CF_STS.CENTRAL_FILL_STATUS_CD = CF_SCRIPTS.CENTRAL_FILL_STATUS_CD
-        WHERE CF_SCRIPTS.RANK_NUM = 1 AND CF_STORE_NBR IS NOT NULL
-        ),
-        CF_SCRIPTS_WORKED AS (
-        SELECT 
-            CF_SCRIPTS.CF_STORE_NBR,
-            CF_SCRIPTS.STORE_NBR,
-            CF_SCRIPTS.RX_NBR,
-            CF_SCRIPTS.FILL_NBR,
-            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 134 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_READY_TO_SHIP_TS,
-            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 123 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_QV2_ENTER_TS,
-            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD = 132 THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_SHIPPED_TS,
-            MAX(CASE WHEN CF_SCRIPTS.FILL_STATUS_CD IN (1,2,3,4,32) THEN CF_SCRIPTS.KAFKA_LOAD_TS ELSE NULL END) AS LAST_QP_TS,
-            MAX_BY(CENTRAL_FILL_STATUS_CD,CF_SCRIPTS.KAFKA_LOAD_TS) AS LAST_CENTRAL_FILL_STATUS_CD
-        FROM CF_SCRIPTS
-        WHERE CF_STORE_NBR IS NOT NULL
-        GROUP BY ALL),
-        FINAL AS (
-        SELECT 
-        CONVERT_TIMEZONE('UTC', 'America/New_York', CURRENT_TIMESTAMP()) AS RECORD_TS_EST,
-        CF_SCRIPTS_LATEST.*,
-        CF_SCRIPTS_WORKED.LAST_READY_TO_SHIP_TS,
-        CF_SCRIPTS_WORKED.LAST_QV2_ENTER_TS,
-        CF_SCRIPTS_WORKED.LAST_SHIPPED_TS,
-        CF_SCRIPTS_WORKED.LAST_QP_TS,
-        CF_SCRIPTS_WORKED.LAST_CENTRAL_FILL_STATUS_CD
-        FROM CF_SCRIPTS_LATEST
-        JOIN CF_SCRIPTS_WORKED
-            ON CF_SCRIPTS_WORKED.STORE_NBR = CF_SCRIPTS_LATEST.STORE_NBR
-            AND CF_SCRIPTS_WORKED.RX_NBR = CF_SCRIPTS_LATEST.RX_NBR
-            AND CF_SCRIPTS_WORKED.FILL_NBR = CF_SCRIPTS_LATEST.FILL_NBR
-            AND CF_SCRIPTS_WORKED.CF_STORE_NBR = CF_SCRIPTS_LATEST.CF_STORE_NBR
-        WHERE CF_SCRIPTS_LATEST.LAST_UPDATED_TS::DATE >= CURRENT_DATE() - 3)
-        SELECT
-            RECORD_TS_EST,
-            CF_STORE_NBR,
-            CREATE_TS,
-            KAFKA_LOAD_TS,
-            RXC_PRESCRIPTION_FILL_ID,
-            STORE_NBR,
-            FILL_NBR,
-            RX_NBR,
-            CENTRAL_FILL_STATUS_CD,
-            CF_EXPECTED_DELIVERY_TS,
-            CF_STATUS_UPDATED_TS,
-            FILL_TS,
-            FILL_SOURCE_CD,
-            FILL_STATE_CD,
-            FILL_STATUS_CD,
-            NDC,
-            PROMISE_TS,
-            CF_RX_REC_EFF_TS,
-            IS_IN_HOLDING_QUEUE_IND,
-            HOLDING_QUEUE_IN_TS,
-            HOLDING_QUEUE_OUT_TS,
-            RANK_NUM,
-            RX_FILL_STATUS_DSC,
-            CENTRAL_FILL_STATUS_DSC,
-            QUEUE_NAME,
-            LAST_UPDATED_TS,
-            LAST_READY_TO_SHIP_TS,
-            LAST_QV2_ENTER_TS,
-            LAST_SHIPPED_TS,
-            LAST_QP_TS,
-            LAST_CENTRAL_FILL_STATUS_CD
-        FROM FINAL;
-    END;
-    
-    RETURN 'CF QDEPTH Procedure executed successfully';
-END;
-$$;
+
+--Connects to a Teradata DB source
+
+--Custom SQL Query4
+SEL * FROM rxcoe_sa.PK_Automation_Colleague_NPS
+
+
+--Custom SQL Query1
+SEL 
+rx_division AS "Division"
+,rx_region AS "Region"
+,rx_district AS "District"
+,we.Store_nbr AS Store
+,we.Fiscal_week_nbr AS "Fiscal Week"
+,RWP_Num
+,RWP_Den
+,CO_Num
+,CO_Den
+,AVG_TIME_TO_ANSWER_IN_SECONDS_NUM
+,AVG_TIME_TO_ANSWER_IN_SECONDS_DEN
+,AVG_CALLS_PLACED_ON_HOLD_NUM
+,AVG_CALLS_PLACED_ON_HOLD_DEN
+,AVG_HOLD_TIME_IN_SECONDS_NUM
+,AVG_HOLD_TIME_IN_SECONDS_DEN    --Time To Answer (Hold Time x Number of calls placed On Hold) = Call Wait Time (IN Seconds)
+,Abandonment_Numerator
+,Abandonment_Denominator
+FROM RXCOE_EWS.JM_WECARE_TABLE we
+Right JOIN 
+(SELECT
+b.store_nbr 
+,c.fiscal_week_nbr 
+--,NullIfZero((Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_abndn_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) + (Sum(CASE WHEN grp_cd = 2 THEN Cast (a.TOT_HOLD_ABNDN_CALL_CNT AS DECIMAL (12,2)) ELSE 0 end))) Abandonment_Numerator --Abandonment Numerator
+,((Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_abndn_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) + (Sum(CASE WHEN grp_cd = 2 THEN Cast (a.TOT_HOLD_ABNDN_CALL_CNT AS DECIMAL (12,2)) ELSE 0 end))) Abandonment_Numerator --Abandonment Numerator
+--,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_non_drv_up_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) Abandonment_Denominator  --Abandoment Denominator
+,(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_non_drv_up_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) Abandonment_Denominator   --Abandoment Denominator
+
+FROM idw_rx_operations_s_bc.sem_fact_vert_store_kpm_dly a
+INNER JOIN idw_common.sem_dim_all_store b
+ON a.store_id = b.store_id
+INNER JOIN idw_common.sem_dim_all_fiscal_cal_day c
+ON a.lcl_day_dt = c.day_dt
+WHERE fiscal_week_nbr >=202201
+AND grp_cd IN (2,3)
+AND b.STORE_NBR NOT IN ('02477','02509','02546','02549','02590','02703','02757','02818','02937','02953','03108','10100','10344','10625','10822','10922','10923','11142','11508','11339','11507','11506','11114','11235') --removing Careplus stores
+AND b.CLOS_DT IS NULL
+AND b.AREA_NBR IN (2,4,8,12,14,16) -- RETAIL ONLY
+GROUP BY 1,2) aa
+ON we.Store_nbr=aa.Store_nbr
+AND we.fiscal_week_nbr = aa.fiscal_week_nbr
+WHERE we.FISCAL_WEEK_NBR >=202201
+and CO_Num >= 0
+
+
+
+--Custom SQL Query
+--METRIC BEING CALCULATED: TOTAL AUTOMATION SCRIPTS, TOTAL STORE SCRIPTS, UTILIZATION - DERIVED
+
+SEL
+DAY_DT AS "Date"
+,FISCAL_WEEK_NBR AS "Fiscal week"
+,FISCAL_YEAR_NBR AS "Fiscal Year"
+,FISCAL_MOY_NBR AS "Fiscal Month"
+,DOW AS "Day of Week"
+,FP.STORE_NBR AS "Store"
+,STR.STORE_24HR_IND AS "24 HR IND"
+,STR.AREA_NBR AS "Division"
+,STR.DSTRT_NBR AS "District"
+,STR.RGN_NBR AS "Region"
+,STR.ST_CD AS "State"
+,CASE WHEN AU.AUTOMATION_ROBOTS IS NOT NULL THEN 'Y' ELSE 'N' END AS "Automation Type"
+,(CASE 
+	WHEN AU.AUTOMATION_ROBOTS LIKE 'SP 100' THEN 'SP 100'
+	WHEN AU.AUTOMATION_ROBOTS LIKE 'SP 200' THEN 'SP 200'	
+	WHEN AU.AUTOMATION_ROBOTS LIKE 'KL%' THEN 'KL'
+    WHEN AU.AUTOMATION_ROBOTS LIKE 'CRS%' THEN 'CRS'
+	WHEN AU.AUTOMATION_ROBOTS LIKE 'PARATA%' THEN 'Parata'
+	ELSE 'Non-Auto' END ) AS "Robot Type" 
+,(Case when Au.Number_of_cells_perRobot >0 then Au.Number_of_cells_perRobot
+Else '0' END) AS "Number of Cells" 
+,Count (DISTINCT FP.PRSCRT_FILL_ID) AS "Total Scripts"
+,Count(DISTINCT CASE WHEN FP.ACC_SCAN_STS_ID = '5' THEN FP.PRSCRT_FILL_ID ELSE NULL END) AS "Total Automation Scripts"
+FROM 
+IDW_RX_OPERATIONS_S_BC.SEM_FACT_WC_RX_FILL_PROCESS FP
+LEFT JOIN  IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_DAY CAL
+ON FP.FILL_DT = CAL.DAY_DT
+right JOIN IDW_COMMON.SEM_DIM_ALL_STORE AS STR
+ON FP.STORE_NBR = STR.STORE_NBR
+AND str.STORE_NBR NOT IN ('02477','02509','02546','02549','02590','02703','02757','02818','02937','02953','03108','10100','10344','10625','10822','10922','10923','11142','11508','11339','11507','11506','11114','11235') --removing Careplus stores
+AND str.CLOS_DT IS NULL
+AND str.AREA_NBR IN (2,4,8,12,14,16) -- RETAIL ONLY
+LEFT JOIN RXCOE_SA.DD_AUTOMATION_ROBOTS_LOCATIONS AU
+ON FP.STORE_NBR = AU.STORE
+WHERE CAL.FISCAL_YEAR_NBR >= ('2022') 
+AND FP.RX_FILL_STATUS_CODE_ID IN ('6','7','9')
+AND FP.VERIFY_DATE IS NOT NULL
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+
+--Custom SQL Query2
+--AvD Data
+SEL 
+fiscal_week_nbr AS "Fiscal Week"
+,dim_store AS Store
+,rph_hrs_demand_adj AS "Rph Demand Hrs"
+,rph_hrs_act_adj AS "Rph Actual Hrs"
+,tech_hrs_demand_adj AS "Tech Demand Hrs"
+,tech_hrs_act_adj AS "Tech Actual Hrs"
+FROM RXCOE_WFM.AVD_RX_FS avd
+LEFT JOIN idw_common.sem_dim_all_fiscal_cal_day cal
+ON avd.dim_week_start=cal.fiscal_week_start_dt
+WHERE  dim_year>=2022
+
+
+--Custom SQL Query5
+SEL * FROM rxcoe_sa.PK_Automation_mTC_Score
+
+
+
+--Custom SQL Query3
+SEL * FROM rxcoe_sa.PK_Automation_Sev1_Data
