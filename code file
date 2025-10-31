@@ -1,120 +1,33 @@
+--Snowflake source
+--Automation Script Volume
 
-
---Connects to a Teradata DB source
-
---Custom SQL Query4
-SEL * FROM rxcoe_sa.PK_Automation_Colleague_NPS
-
-
---Custom SQL Query1
-SEL 
-rx_division AS "Division"
-,rx_region AS "Region"
-,rx_district AS "District"
-,we.Store_nbr AS Store
-,we.Fiscal_week_nbr AS "Fiscal Week"
-,RWP_Num
-,RWP_Den
-,CO_Num
-,CO_Den
-,AVG_TIME_TO_ANSWER_IN_SECONDS_NUM
-,AVG_TIME_TO_ANSWER_IN_SECONDS_DEN
-,AVG_CALLS_PLACED_ON_HOLD_NUM
-,AVG_CALLS_PLACED_ON_HOLD_DEN
-,AVG_HOLD_TIME_IN_SECONDS_NUM
-,AVG_HOLD_TIME_IN_SECONDS_DEN    --Time To Answer (Hold Time x Number of calls placed On Hold) = Call Wait Time (IN Seconds)
-,Abandonment_Numerator
-,Abandonment_Denominator
-FROM RXCOE_EWS.JM_WECARE_TABLE we
-Right JOIN 
-(SELECT
-b.store_nbr 
-,c.fiscal_week_nbr 
---,NullIfZero((Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_abndn_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) + (Sum(CASE WHEN grp_cd = 2 THEN Cast (a.TOT_HOLD_ABNDN_CALL_CNT AS DECIMAL (12,2)) ELSE 0 end))) Abandonment_Numerator --Abandonment Numerator
-,((Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_abndn_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) + (Sum(CASE WHEN grp_cd = 2 THEN Cast (a.TOT_HOLD_ABNDN_CALL_CNT AS DECIMAL (12,2)) ELSE 0 end))) Abandonment_Numerator --Abandonment Numerator
---,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_non_drv_up_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) Abandonment_Denominator  --Abandoment Denominator
-,(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_non_drv_up_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) Abandonment_Denominator   --Abandoment Denominator
-
-FROM idw_rx_operations_s_bc.sem_fact_vert_store_kpm_dly a
-INNER JOIN idw_common.sem_dim_all_store b
-ON a.store_id = b.store_id
-INNER JOIN idw_common.sem_dim_all_fiscal_cal_day c
-ON a.lcl_day_dt = c.day_dt
-WHERE fiscal_week_nbr >=202201
-AND grp_cd IN (2,3)
-AND b.STORE_NBR NOT IN ('02477','02509','02546','02549','02590','02703','02757','02818','02937','02953','03108','10100','10344','10625','10822','10922','10923','11142','11508','11339','11507','11506','11114','11235') --removing Careplus stores
-AND b.CLOS_DT IS NULL
-AND b.AREA_NBR IN (2,4,8,12,14,16) -- RETAIL ONLY
-GROUP BY 1,2) aa
-ON we.Store_nbr=aa.Store_nbr
-AND we.fiscal_week_nbr = aa.fiscal_week_nbr
-WHERE we.FISCAL_WEEK_NBR >=202201
-and CO_Num >= 0
-
-
-
---Custom SQL Query
---METRIC BEING CALCULATED: TOTAL AUTOMATION SCRIPTS, TOTAL STORE SCRIPTS, UTILIZATION - DERIVED
-
-SEL
-DAY_DT AS "Date"
-,FISCAL_WEEK_NBR AS "Fiscal week"
-,FISCAL_YEAR_NBR AS "Fiscal Year"
-,FISCAL_MOY_NBR AS "Fiscal Month"
-,DOW AS "Day of Week"
-,FP.STORE_NBR AS "Store"
-,STR.STORE_24HR_IND AS "24 HR IND"
-,STR.AREA_NBR AS "Division"
-,STR.DSTRT_NBR AS "District"
-,STR.RGN_NBR AS "Region"
-,STR.ST_CD AS "State"
-,CASE WHEN AU.AUTOMATION_ROBOTS IS NOT NULL THEN 'Y' ELSE 'N' END AS "Automation Type"
-,(CASE 
-	WHEN AU.AUTOMATION_ROBOTS LIKE 'SP 100' THEN 'SP 100'
-	WHEN AU.AUTOMATION_ROBOTS LIKE 'SP 200' THEN 'SP 200'	
-	WHEN AU.AUTOMATION_ROBOTS LIKE 'KL%' THEN 'KL'
-    WHEN AU.AUTOMATION_ROBOTS LIKE 'CRS%' THEN 'CRS'
-	WHEN AU.AUTOMATION_ROBOTS LIKE 'PARATA%' THEN 'Parata'
-	ELSE 'Non-Auto' END ) AS "Robot Type" 
-,(Case when Au.Number_of_cells_perRobot >0 then Au.Number_of_cells_perRobot
-Else '0' END) AS "Number of Cells" 
-,Count (DISTINCT FP.PRSCRT_FILL_ID) AS "Total Scripts"
-,Count(DISTINCT CASE WHEN FP.ACC_SCAN_STS_ID = '5' THEN FP.PRSCRT_FILL_ID ELSE NULL END) AS "Total Automation Scripts"
-FROM 
-IDW_RX_OPERATIONS_S_BC.SEM_FACT_WC_RX_FILL_PROCESS FP
-LEFT JOIN  IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_DAY CAL
-ON FP.FILL_DT = CAL.DAY_DT
-right JOIN IDW_COMMON.SEM_DIM_ALL_STORE AS STR
-ON FP.STORE_NBR = STR.STORE_NBR
-AND str.STORE_NBR NOT IN ('02477','02509','02546','02549','02590','02703','02757','02818','02937','02953','03108','10100','10344','10625','10822','10922','10923','11142','11508','11339','11507','11506','11114','11235') --removing Careplus stores
-AND str.CLOS_DT IS NULL
-AND str.AREA_NBR IN (2,4,8,12,14,16) -- RETAIL ONLY
-LEFT JOIN RXCOE_SA.DD_AUTOMATION_ROBOTS_LOCATIONS AU
-ON FP.STORE_NBR = AU.STORE
-WHERE CAL.FISCAL_YEAR_NBR >= ('2022') 
-AND FP.RX_FILL_STATUS_CODE_ID IN ('6','7','9')
-AND FP.VERIFY_DATE IS NOT NULL
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-
---Custom SQL Query2
---AvD Data
-SEL 
-fiscal_week_nbr AS "Fiscal Week"
-,dim_store AS Store
-,rph_hrs_demand_adj AS "Rph Demand Hrs"
-,rph_hrs_act_adj AS "Rph Actual Hrs"
-,tech_hrs_demand_adj AS "Tech Demand Hrs"
-,tech_hrs_act_adj AS "Tech Actual Hrs"
-FROM RXCOE_WFM.AVD_RX_FS avd
-LEFT JOIN idw_common.sem_dim_all_fiscal_cal_day cal
-ON avd.dim_week_start=cal.fiscal_week_start_dt
-WHERE  dim_year>=2022
-
-
---Custom SQL Query5
-SEL * FROM rxcoe_sa.PK_Automation_mTC_Score
-
-
-
---Custom SQL Query3
-SEL * FROM rxcoe_sa.PK_Automation_Sev1_Data
+SELECT STR.STORE_NBR,    
+str.division_nbr,
+str.rx_region_nbr,
+str.rx_area_nbr,
+STR.RX_DISTRICT_NBR,
+STR.STATE_CD,
+STR.HR24_IND,
+STR.AUTOMATION_DETAIL_CD,
+FISCAL_WEEK_NBR,
+Sum (CASE WHEN scripts.ACC_SCAN_STATUS_CD = '5' THEN 1 ELSE 0 end) AS AUTOFILLS,
+COUNT(DISTINCT scripts.RXC_PRESCRIPTION_FILL_ID) as TotalFills,
+sum( CASE WHEN MOD(scripts.dispense_qty,drug.package_size_amt) =0  then 1 else 0 end) AS CurrentUOU
+FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL as scripts
+JOIN core_fssc.curated_calendar.day as cal
+    on to_date(scripts.rec_eff_ts) = cal.date_dt 
+JOIN CORE_RX.CURATED_LOCATION.STORE AS STR
+    ON SCRIPTS.STORE_NBR = STR.STORE_NBR
+    and STR.AUTOMATION_DETAIL_CD IS NOT NULL AND (STR.AUTOMATION_REMOVAL_DT IS NULL OR STR.AUTOMATION_REMOVAL_DT < STR.AUTOMATION_INSTALL_DT)
+    JOIN CORE_RX.CURATED_PRODUCT.DRUG as drug 
+on scripts.ndc = drug.ndc
+LEFT JOIN sem_rx.common_rx.sem_drug AS sem_drug
+    ON sem_drug.NDC = scripts.NDC
+--WHERE DRUG.NIOSH_DRUG_TABLE_IND is null and drug.dosage_form_nm in ('TA','CA')
+--and DRUG.DEA_CD = 0 and drug.package_size_amt >=60
+--and sem_drug.strength_unit_of_measure_cd is not null
+--and  contains(lower(sem_drug.package_dsc),'bottle') and (NOT DOSAGE_FORM_CD IN ('CHEW','SUBL'))
+where cal.FISCAL_month_NBR >= 202501
+AND FILL_STATUS_CD IN ('6','7','9')
+and Fill_state_cd = 1
+GROUP BY all
