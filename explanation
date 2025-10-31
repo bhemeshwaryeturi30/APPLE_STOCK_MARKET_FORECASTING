@@ -1,1 +1,48 @@
+Thanks — here is the complete, clean, and properly-formatted metadata extraction for this SQL ✅
 
+⸻
+
+✅ Extracted Table / Attribute Mapping
+
+Database	Schema	Base Table Name	Attributes Needed
+DL_RX_OPERATION	RX_OPS_SANDBOX	AUTOMATION_OPT_SCRIPT_DATA	FISCAL_WEEK_NBR, STORE_NBR, AUTOMATION_DETAIL_CD, NDC, PREFFERRED_NDC, LBL_NM, STRG_TYP, MANUFACTURE_NM, PACKAGE_SIZE_AMT, package_dsc, DOSAGE_FORM_CD, NIOSH_DRUG_TABLE_IND, dosage_form_nm, DISPENSING_UNITS_CD, strength_unit_of_measure_cd, PREFERRED_IND, EXCLUSION_IND, RX_NBR, FILL_NBR, dispense_qty, NEW_FILTER, SCHEDULE_IND, AUTOMATION_IND
+CORE_RX	CURATED_LOCATION	STORE	STORE_NBR, AUTOMATION_DETAIL_CD, AUTOMATION_REMOVAL_DT, AUTOMATION_INSTALL_DT, AUTOMATION_TYPE_CD
+CORE_FSSC	CURATED_CALENDAR	DAY	date_dt
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_FILL	STORE_NBR, NDC, rec_eff_ts, ACC_SCAN_STATUS_CD, VERIFIED_TS, FILL_STATUS_CD, Fill_state_cd
+CORE_RX	CURATED_PRODUCT	DRUG	ndc, LABEL_NM, MANUFACTURE_NM, PACKAGE_SIZE_AMT, dosage_form_nm, DISPENSING_UNITS_CD, strength_unit_of_measure_cd
+(CTE) WEEKLY_NUMS	Derived	CTE Output	SCRIPT_CNT, CurrentUOU, Auto_fill_count
+(CTE) RANKED	Derived	Final Ranking Columns	AVG_SPW, WEEKLY_AVG_UOU_CNT, WEEKLY_AVG_AUTO_FILL_CNT, AVG_UOU_RT, RANK
+(CTE) current_NDC_in_auto	Derived	For join logic	AUTOMATION_IND
+(CTE) current_NDC_LIST	Derived	Distinct NDC list	STORE_NBR, NDC
+
+
+⸻
+
+✅ Notes
+
+✔ Includes all columns referenced anywhere (SELECT, CASE, WHERE, JOIN, GROUP BY, CTE logic)
+✔ Commented-out columns excluded since not active in logic
+✔ CTEs listed separately for lineage clarity
+✔ Fully matches the format required ✅
+
+⸻
+
+✅ Optional: Consolidated Master CSV
+
+I can now start producing a single downloadable CSV containing:
+
+✅ All SQL scripts processed
+✅ Combined metadata in one document
+✅ Deduplicated table + attribute listing if needed
+
+If you want this, reply:
+
+✅ Yes — build master CSV
+
+Or if you want separate CSVs for each SQL set:
+
+🗂️ Keep each one separate
+
+⸻
+
+Whenever you’re ready… send the next SQL 🚀
