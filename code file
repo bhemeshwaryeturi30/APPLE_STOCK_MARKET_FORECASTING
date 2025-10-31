@@ -1,1 +1,48 @@
+WITH CF_PNP AS (
+select 
+      b.rx_nbr 
+    , b.store_nbr AS CF_STORE_NBR 
+    , b.fill_nbr 
+    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
+    , A.TRACKING_NBR
+    , A.COURIER_NM
+    , max(case when c.order_status_cd = 10 then c.rec_eff_ts else null end) as Order_date 
+    , max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Handoff_Date
+    , max(case when c.order_status_cd = 4 then c.rec_eff_ts else null end) as Delivered_Date
+    , max(case when c.order_status_cd = 8 then c.rec_eff_ts else null end) as Cancelled_Date
+from core_fssc.curated_orders.order_delivery as a 
+join core_fssc.curated_orders.order_delivery_item as b
+    on a.order_id = b.order_id
+    and a.store_nbr = b.store_nbr
+join (select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts 
+      --history table does not have current record in it
+      from core_fssc.curated_orders.order_delivery_history
+      union 
+      select 
+            order_id 
+          , store_nbr 
+          , order_status_cd 
+          , rec_eff_ts 
+      from core_fssc.curated_orders.order_delivery) as c
+    on a.order_id = c.order_id 
+    and a.store_nbr = c.store_nbr
+WHERE c.order_status_cd IN (4,8,10,13) -- Only the required activities
+AND DELIVERY_SLA_CD='CF-STS' -- CF delivery code
+AND TO_DATE(A.rec_eff_ts) >= CURRENT_DATE() - 365 AND TO_DATE(A.rec_eff_ts) <= CURRENT_DATE()
+group by 1,2,3,4,5,6)
 
+SELECT 
+CF_STORE_NBR
+,HOME_STORE_NBR
+,rx_nbr 
+,fill_nbr 
+,TRACKING_NBR
+,COURIER_NM
+,TO_DATE(Order_date) AS ORDER_DATE 
+,Handoff_Date
+,Delivered_Date
+FROM CF_PNP WHERE Cancelled_Date IS NULL
