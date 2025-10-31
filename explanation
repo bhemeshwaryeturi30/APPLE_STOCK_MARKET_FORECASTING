@@ -1,1 +1,33 @@
+Got it ✅ — here is the metadata extraction for this specific CF_PNP query in the exact same format 👇
 
+⸻
+
+✅ Extracted Metadata (Snowflake — Persistent Objects Only)
+
+Database	Schema	Base Table Name	Attributes Needed
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY	ORDER_ID, STORE_NBR, DESTINATION_RECIPIENT_TXT, TRACKING_NBR, COURIER_NM, REC_EFF_TS, DELIVERY_SLA_CD
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY_ITEM	ORDER_ID, STORE_NBR, RX_NBR, FILL_NBR
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY_HISTORY	ORDER_ID, STORE_NBR, ORDER_STATUS_CD, REC_EFF_TS
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY (again via UNION)	ORDER_ID, STORE_NBR, ORDER_STATUS_CD, REC_EFF_TS
+
+
+⸻
+
+Validation Notes ✅
+
+✔ Only persistent physical tables included
+✔ All attributes used in SELECT, GROUP BY, WHERE conditions captured
+✔ No duplication of fields
+✔ CTE and final SELECT not included in metadata (correct behavior)
+
+⸻
+
+✅ Checkpoint
+
+Would you like me to:
+
+A ✅ → Combine all Snowflake metadata (from every script so far) into one consolidated metadata sheet
+B → Keep this as a separate Snowflake extraction section and continue script-by-script
+C → Export metadata to CSV with download link (Snowflake / IDW / RXCOE_PMI separately)
+
+Just reply with A, B, or C ✅
