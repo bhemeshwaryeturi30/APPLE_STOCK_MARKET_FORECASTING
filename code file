@@ -1,1 +1,153 @@
+--Snowflake source
+--Recommended NDC Source
 
+WITH WEEKLY_NUMS AS (
+  SELECT
+   FISCAL_WEEK_NBR,
+    da.STORE_NBR,
+    da.AUTOMATION_DETAIL_CD,
+    NDC,
+    PREFFERRED_NDC,
+    LBL_NM,
+    STRG_TYP,
+    MANUFACTURE_NM,
+    PACKAGE_SIZE_AMT,
+    package_dsc,
+    DOSAGE_FORM_CD,
+    NIOSH_DRUG_TABLE_IND,
+    dosage_form_nm,
+    DISPENSING_UNITS_CD,
+    strength_unit_of_measure_cd,
+    PREFERRED_IND,
+    EXCLUSION_IND,
+    COUNT(DISTINCT RX_NBR, FILL_NBR) AS SCRIPT_CNT,
+    SUM(
+      CASE
+        WHEN dispense_qty % package_size_amt = 0 THEN 1
+        ELSE 0
+      END
+    ) AS CurrentUOU,
+    SUM(AUTOMATION_IND) AS Auto_fill_count
+  FROM
+    DL_RX_OPERATION.RX_OPS_SANDBOX.AUTOMATION_OPT_SCRIPT_DATA AS da
+    JOIN CORE_RX.CURATED_LOCATION.STORE AS STR ON da.STORE_NBR = STR.STORE_NBR
+  WHERE
+    NOT STR.AUTOMATION_DETAIL_CD IS NULL
+    AND STR.AUTOMATION_REMOVAL_DT IS NULL
+    AND NEW_FILTER = 1
+    AND EXCLUSION_IND = 0
+    AND PREFERRED_IND = 1
+    AND str.AUTOMATION_DETAIL_CD <> '0'
+    AND SCHEDULE_IND = 0
+  GROUP BY
+    ALL
+),
+RANKED AS (
+  SELECT
+    STORE_NBR,
+    AUTOMATION_DETAIL_CD,
+    NDC,
+    PREFFERRED_NDC,
+    LBL_NM,
+    MANUFACTURE_NM,
+    PACKAGE_SIZE_AMT,
+    package_dsc,
+    DOSAGE_FORM_CD,
+    NIOSH_DRUG_TABLE_IND,
+    dosage_form_nm,
+    DISPENSING_UNITS_CD,
+    strength_unit_of_measure_cd,
+    PREFERRED_IND,
+    EXCLUSION_IND,
+    AVG(SCRIPT_CNT) AS AVG_SPW,
+    AVG(CurrentUOU) AS WEEKLY_AVG_UOU_CNT,
+    AVG(Auto_fill_count) AS WEEKLY_AVG_AUTO_FILL_CNT,
+    (WEEKLY_AVG_UOU_CNT / AVG_SPW) AS AVG_UOU_RT,
+    STRG_TYP,
+    ROW_NUMBER() OVER (
+      PARTITION BY STORE_NBR,
+      AUTOMATION_DETAIL_CD
+      ORDER BY
+        AVG_SPW DESC
+    ) AS RANK
+  FROM
+    WEEKLY_NUMS
+  GROUP BY
+    ALL
+  HAVING
+    AVG_UOU_RT < 0.67
+),
+
+current_NDC_in_auto AS (
+SELECT
+ --CAL.FISCAL_WEEK_NBR,
+  --  CAL.FISCAL_MONTH_NBR,
+    SCRIPTS.STORE_NBR,
+    SCRIPTS.NDC,
+    STR.AUTOMATION_DETAIL_CD,
+    STR.AUTOMATION_TYPE_CD,
+    DRUG.LABEL_NM AS LBL_NM,
+    DRUG.MANUFACTURE_NM,
+    CASE WHEN scripts.ACC_SCAN_STATUS_CD = 5 THEN 1 ELSE 0 END AS AUTOMATION_IND,
+FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL as scripts
+JOIN core_fssc.curated_calendar.day as cal
+    on to_date(scripts.rec_eff_ts) = cal.date_dt 
+    AND CAL.date_dt  >= Current_Date()-30
+JOIN CORE_RX.CURATED_LOCATION.STORE AS STR
+    ON SCRIPTS.STORE_NBR = STR.STORE_NBR
+    AND STR.AUTOMATION_DETAIL_CD IS NOT NULL AND STR.AUTOMATION_REMOVAL_DT IS NULL
+JOIN CORE_RX.CURATED_PRODUCT.DRUG as drug
+    on scripts.ndc = drug.ndc
+WHERE scripts.VERIFIED_TS IS NOT NULL
+),
+
+current_NDC_LIST as
+(
+select distinct
+STORE_NBR, NDC
+from current_NDC_in_auto
+where AUTOMATION_IND= 1
+)
+
+SELECT
+  RANKED.*,
+  --count (distinct new_data.PRSC_ID) as total_Scripts,
+  --ROW_NUMBER() OVER (partition by new_data.store_nbr ORDER BY total_Scripts  DESC) AS NDC_counts, 
+  CASE
+    WHEN WEEKLY_AVG_AUTO_FILL_CNT > 0
+    OR RANKED.STRG_TYP = 'P' THEN 'Y'
+    ELSE 'N'
+  END AS Drug_in_auto,
+  CASE
+    WHEN RANKED.AVG_SPW > 30 THEN 'Double cell'
+    ELSE 'Single cell'
+  END AS Cell_size,
+  case
+    when new_data.NDC is null
+    then 0 else 1 
+ ENd as recommended_NDC_In_Auto_Y
+FROM
+  RANKED
+ left JOIN current_NDC_LIST AS NEW_DATA
+  ON RANKED.NDC = NEW_DATA.NDC
+  and Ranked.STORE_NBR = new_data.STORE_NBR
+   where 
+   (
+    RANKED.AUTOMATION_DETAIL_CD ILIKE '%SP200%'
+    AND RANK <= 190
+  )
+  OR (
+    RANKED.AUTOMATION_DETAIL_CD ILIKE '%Parata MaX%'
+    AND RANK <= 190
+  )
+  OR (
+    RANKED.AUTOMATION_DETAIL_CD ILIKE '%SP%100%'
+    AND RANK <= 95
+  )
+  or  (
+    RANKED.AUTOMATION_DETAIL_CD ILIKE '%CRS%'
+    AND RANK <= 125
+  )
+ORDER BY
+  RANKED.STORE_NBR,
+  RANK
