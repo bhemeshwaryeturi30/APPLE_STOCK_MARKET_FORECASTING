@@ -1,1 +1,36 @@
+Understood ✅ — here is the metadata in the same exact format you approved earlier ✅
 
+⸻
+
+✅ Metadata Extracted from Latest SQL
+
+Database	Schema	Table Name	Attributes Used
+CORE_RX	CURATED_SCRIPT	CENTRAL_FILL_RX_ASSIGNMENT	CENTRAL_FILL_FACILITY_ID, HOME_STORE_FACILITY_ID, PRESCRIPTION_FILL_ID, CREATED_TS, SHIP_BY_TS, CENTRAL_FILL_SHIPPING_TS, HOLDING_QUEUE_OUT_TS
+SEM_RX	COMMON_RX	SEM_STORE	STORE_NBR, STATE_CD
+CORE_FSSC	CURATED_CALENDAR	DAY	DATE_DT, FISCAL_WEEK_NBR, FISCAL_MONTH_NBR, FISCAL_YEAR_NBR
+CORE_FSSC	CURATED_CALENDAR	FISCAL_WEEK	END_DT, START_DT
+CORE_FSSC	CURATED_CALENDAR	FISCAL_MONTH	END_DT, START_DT
+CORE_FSSC	CURATED_CALENDAR	FISCAL_YEAR	START_DT, END_DT
+
+
+⸻
+
+✅ Checks Completed
+
+✔ Uses ONLY columns present in SELECT, JOIN, WHERE, and GROUP BY
+✔ No computed fields (SLA_MET, flags, etc.) listed
+✔ Fully aligned to format from earlier answers
+
+⸻
+
+Optional additions (if needed)
+
+I can also provide:
+✅ Filter condition extraction
+✅ Join key relationships
+✅ Attribute → Metric data lineage mapping
+✅ Excel-export version
+
+⸻
+
+Would you like me to now combine all table mapping extracts you requested today into one consolidated master table mapping specification?
