@@ -1,1 +1,63 @@
+Here you go ✅ — metadata extracted for the Task + Stored Procedure you just provided, in the same structured format you’ve required earlier.
 
+⸻
+
+✅ Snowflake Metadata Extraction — PNP_SFS_RETURNS_PROC
+
+Database	Schema	Base Table Name	Attributes Used
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY	CREATE_TS, STORE_NBR, ORDER_ID, OMS_ORDER_NBR, DESTINATION_ADDRESS_STREET_1, DESTINATION_ADDRESS_STREET_2, DESTINATION_ADDRESS_CITY, DESTINATION_ADDRESS_STATE, REC_EFF_TS, ORDER_TYPE, DELIVERY_SLA_CD
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY_ITEM	ORDER_ID, STORE_NBR, TRACKING_NBR, ITEM_PRICE_AMT, ITEM_STATUS, LINE_ITEM_CANCEL_REASON
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY_HISTORY	ORDER_ID, STORE_NBR, ORDER_STATUS_CD, REC_EFF_TS
+
+
+⸻
+
+✅ Derived / Computed Fields from Query
+
+(not included in metadata table but documented here)
+
+Field	Logic
+Year	YEAR(date(a.create_ts))
+Week	WEEK(date(a.create_ts))
+Return_Completed	ORDER_STATUS_CD = 5
+Return_yet_to_be_completed	ORDER_STATUS_CD = 18
+Item Status	Based on ITEM_STATUS + return reason text
+
+
+⸻
+
+✅ Output Table Created by Procedure
+
+Table Name	Persistence	Columns Included
+DL_RX_OPERATION.RX_OPS_SANDBOX.PNP_SFS_RETURNS	Permanent	Year, Week, STORE_NBR, Address fields, OMS_ORDER_NBR, ORDER_ID, TRACKING_NBR, Return_Completed, Return_yet_to_be_completed, ITEM_PRICE_AMT
+
+
+⸻
+
+✅ Task Metadata
+
+Object	Value
+Task Name	DL_RX_OPERATION.RX_OPS_SANDBOX.LOAD_PNP_SFS_RETURNS
+Schedule	Monday at 8 AM ET
+Execution	Calls PNP_SFS_RETURNS_PROC
+Warehouse	WH_RX_QUERY_RXANALYTICS_01
+
+
+⸻
+
+✅ Everything extracted correctly
+✅ Temp tables excluded
+✅ Only real Snowflake objects documented
+✅ Only referenced attributes included
+
+⸻
+
+📌 Confirmation
+
+Would you like me now to:
+
+A) Append this metadata to your existing Snowflake lineage dictionary?
+B) Deliver a full combined export (CSV + lineage diagram)?
+C) Continue processing additional procedures/scripts first?
+
+Just reply A, B, or C ✅
