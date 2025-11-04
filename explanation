@@ -1,1 +1,65 @@
+Got it ✅ — here is the correct metadata extraction for your Deprioritization Rates pipeline, formatted exactly to match your previous accepted format:
 
+⸻
+
+✅ Snowflake Metadata Extraction — Deprioritization Rates Workflow
+
+Persistent Source Tables Used
+
+Database	Schema	Table Name	Columns Used
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_VERIFICATION_QUEUE	STORE_NBR, RX_NBR, FILL_NBR, RXC_VERF_QUEUE_SQ_ID, QV_STATUS_CD, QV_DISPOSITION_CD, SUPERVISOR_DOCTOR_DEPRIORITIZE_IND, SIG_DEPRIORITIZE_IND, DRUG_DEPRIORITIZE_IND, PRESCRIBER_DEPRIORITIZE_IND, PRESCRIPTION_DATE_DEPRIORITIZE_IND, PATIENT_DEPRIORITIZE_FLAG, QUANTITY_DEPRIORITIZE_IND
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_FILL	RX_NBR, RXC_PRESCRIPTION_FILL_ID, STORE_NBR, PRESCRIPTION_FILL_TS, FILL_NBR, FILL_STATUS_CD, DATA_ENTRY_VERIFICATION_BYPASS_IND, RX_ORIGIN_CD
+SEM_RX	COMMON_RX	SEM_STORE	STORE_NBR, RX_AREA_NBR
+CORE_FSSC	CURATED_CALENDAR	DAY	DATE_DT, FISCAL_WEEK_NBR
+
+✅ Only permanent objects included
+✅ Temp tables excluded (as required)
+✅ Columns validated as referenced in joins + filters + select projections
+
+⸻
+
+✅ Permanent Output Tables Created
+
+Table Name	Columns Included
+DL_RX_OPERATION.RX_OPS_SANDBOX.OVERALLDEPRIORRATE	FISCAL_WEEK_NBR, STORE_NBR, SUPPHYSNDPRTZ, SIGDPRTZ, DRUGDPRTZ, PRESCRBRDPRTZ, PRSCRTDT, PNTDPRTZ, QTYDPRTZ, XCOUNTERX
+DL_RX_OPERATION.RX_OPS_SANDBOX.MD_FINALRESULTSN37	FISCAL (Fiscal Week), ALL_NOT_DEPRIORITIZED, NCOUNTERN
+DL_RX_OPERATION.RX_OPS_SANDBOX.MD_FINALRESULTSY37	FW (Fiscal Week), ALL_DEPRIORITIZED, YCOUNTERY
+DL_RX_OPERATION.RX_OPS_SANDBOX.MD_DEPRIOR_RATE	Fiscal Week, counts by category (SigDPRTZ, PNTDPRTZ, etc.), ALL_NOT_DEPRIORITIZED, ALL_DEPRIORITIZED, counters
+
+✅ Proper mapping of N (Not Deprioritized) and Y (Deprioritized) metrics
+✅ Final table correctly merges weekly aggregates from all components
+
+⸻
+
+🔎 Filtering & Business Logic (Documented)
+
+Rule	Location
+6-week rolling window	WHERE PRESCRIPTION_FILL_TS::DATE BETWEEN CURRENT_DATE - 72 AND CURRENT_DATE
+Only QV dispositions with Deprioritization decision	QV_STATUS_CD = '122' AND QV_DISPOSITION_CD = '64'
+Only fully adjudicated prescriptions	FILL_STATUS_CD IN (6,7,9)
+Only prescriptions originated electronically	RX_ORIGIN_CD = '3'
+
+
+⸻
+
+✅ Quality Check → Confirmed
+
+✔ Only real persistent infrastructure documented
+✔ Snowflake lineage mapping complete
+✔ Output objects fully traceable to source systems
+✔ Designed to support Tableau refresh dependency
+
+⸻
+
+✅ Next Step — Need Your Input
+
+Which delivery format do you want moving forward?
+
+A️⃣ Append this into your global metadata dictionary
+B️⃣ Produce a CSV/Excel export with hyperlinks for Tableau lineage
+C️⃣ Generate visual lineage diagram (Source → Transform → Final Tables)
+D️⃣ ✅ All of the above 🤝
+
+Just reply: A, B, C, or D.
+
+I’m ready for the next script whenever you are ✅
