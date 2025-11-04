@@ -1,1 +1,91 @@
 
+Thanks — I now understand exactly what you want ✅
+You want metadata extraction only (not rewriting the SQL)
+in the same structured format I used for the previous MD_BYPASS query.
+
+So here’s the metadata for this new Snowflake Source CF STS Flow Time Query.
+
+⸻
+
+✅ Snowflake Metadata Summary — CF STS Flow Time Tracking
+
+✅ Source Tables Used
+
+Database	Schema	Table Name	Columns Used
+CORE_FSSC	curated_orders	order_delivery	ORDER_ID, STORE_NBR, DESTINATION_RECIPIENT_TXT, REC_EFF_TS, DELIVERY_SLA_CD
+CORE_FSSC	curated_orders	order_delivery_item	ORDER_ID, STORE_NBR, RX_NBR, FILL_NBR
+CORE_FSSC	curated_orders	order_delivery_history	ORDER_ID, STORE_NBR, ORDER_STATUS_CD, REC_EFF_TS, TRACKING_NBR
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_FILL_XREF	RXC_PRESCRIPTION_FILL_ID, RX_NBR, FILL_NBR, STORE_NBR
+CORE_RX	CURATED_LOCATION	STORE	STORE_NBR, STATE_CD, TIMEZONE_DSC
+CORE_RX	CURATED_SCRIPT	CENTRAL_FILL_RX_ASSIGNMENT	PRESCRIPTION_FILL_ID, CENTRAL_FILL_FACILITY_ID, HOLDING_QUEUE_OUT_TS, HOME_STORE_FACILITY_ID
+CORE_FSSC	CURATED_CALENDAR	DAY	DATE_DT, FISCAL_WEEK_NBR, FISCAL_MONTH_NBR, FISCAL_YEAR_NBR, DAY_OF_WEEK_DSC
+CORE_FSSC	CURATED_CALENDAR	FISCAL_WEEK	FISCAL_WEEK_NBR, START_DT, END_DT
+CORE_FSSC	CURATED_CALENDAR	FISCAL_MONTH	FISCAL_MONTH_NBR, START_DT, END_DT
+
+✅ Attributes filtered down to only join/select relevant fields
+✅ No unnecessary columns listed
+
+⸻
+
+✅ Output Columns Generated (Final SELECT)
+
+Output Field	Business Meaning
+FISCAL_YEAR_NBR	Fiscal year aligned to fill timestamp
+FISCAL_MONTH_NBR	Fiscal month number
+FISCAL_MONTH_END_DT	Last day of fiscal month
+FISCAL_WEEK_NBR	Fiscal week number
+FISCAL_WEEK_END_DT	Fiscal week ending date
+fiscal_week_start_dt	Week start date
+fiscal_month_start_dt	Month start date
+CF_STORE_NBR	Central Fill facility identifier
+DOW	Day-of-week description
+fill_count	Count of fills handoff occurs after Holding Queue Out
+total_fill_count	All fills in valid scope
+
+
+⸻
+
+✅ Business Logic & Filters
+
+Rule Category	Logic Used
+Activity Filtering	ORDER_STATUS_CD in (2 Prep, 13 Handoff, 4 Delivered)
+Delivery Type	DELIVERY_SLA_CD = ‘CF-STS’
+Date Filtering	YEAR(A.rec_eff_ts) >= 2025
+Handoff Day Filtering	DAYOFWEEKISO(Handoff_Date) IN (1–6)
+Working Days Filtering	Only Mon–Fri → temp1.DOW IN (‘MON’,‘TUE’,‘WED’,‘THU’,‘FRI’)
+Time Zone Normalization	EST → regional offset logic
+Time of Day Filter	HOUR(TIME_ADJ_HOLDING_QUEUE_OUT_TS) <= 13
+Current Week Excluded	Fiscal Week End < Current Date
+
+✅ This aligns with SLA measurement for CF → Store delivery lag
+✅ Uses holding queue exit time as baseline operational timestamp
+
+⸻
+
+✅ KPI Output Definition
+
+KPI	Formula
+Flow Time Fail Count (fill_count)	handoff_date > holding_queue_out_ts
+Total Count	distinct fills meeting conditions
+Flow Time Rate (not included but implied)	1 - (fill_count / total_fill_count)
+
+
+⸻
+
+✅ Next Step Options (Pick One)
+
+A️⃣ Include this dataset in your Source → Target Data Lineage Tracker
+B️⃣ Create a visualized data flow diagram (Mermaid or PPT)
+C️⃣ Provide a table documentation template for Alation upload
+D️⃣ Validate correctness of business logic and fix issues (ex: calendar joins)
+
+Reply A, B, C, D or ALL ✅
+
+Would you also like me to rewrite this entire SQL to:
+
+✅ Optimize joins
+✅ Remove unnecessary subqueries
+✅ Fix calendar join bug
+✅ Improve performance + readability
+
+Just say: “Optimize the CF STS SQL” 🚀
