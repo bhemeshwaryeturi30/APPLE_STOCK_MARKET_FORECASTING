@@ -1,1 +1,61 @@
+Perfect — here is the exact metadata extraction for the MD_BYPASS_RATES_ACT1 script, formatted consistently with your accepted structure ✅
 
+⸻
+
+✅ Snowflake Metadata Summary — MD_BYPASS_RATES_ACT1
+
+✅ Source Tables Used
+
+Database	Schema	Table Name	Columns Used
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_FILL	RXC_PRESCRIPTION_FILL_ID, STORE_NBR, FILL_STATUS_CD
+SEM_RX	COMMON_RX	SEM_STORE	STORE_NBR, RX_AREA_NBR, RX_REGION_NBR, RX_DISTRICT_NBR, STATE_CD
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_FILL_ACTIVITY	RXC_PRESCRIPTION_FILL_ID, ACTIVITY_CD, CREATE_TS
+CORE_FSSC	CURATED_CALENDAR	DAY	DATE_DT, FISCAL_WEEK_NBR
+
+✅ Only columns referenced in joins / filters / select
+✅ No unnecessary attributes
+✅ Final format aligned to original requirement
+
+⸻
+
+✅ Permanent Output Table Created
+
+Database	Schema	Table Name	Columns Included
+DL_RX_OPERATION	RX_OPS_SANDBOX	MD_BYPASS_RATES_ACT1	AREA_NBR, RGN_NBR, DSTRT_NBR, STORE_NBR, ST_CD, FISCAL_WEEK_NBR, ACTIVITY_CD, DEV_BYPASS, DEV, WAVE_BYPASS, WAVE, QV1_BYPASS, SCRIPT_COUNTS
+
+Note: QV1_BYPASS logic appears incorrect due to a contradictory condition:
+
+CASE WHEN ACT.ACTIVITY_CD = '101' AND ACT.ACTIVITY_CD = '111'
+
+➡️ A single value cannot simultaneously be 101 & 111
+✅ Should likely be:
+
+CASE WHEN ACT.ACTIVITY_CD IN ('101','111') THEN '1' ELSE '0' END
+
+Let me know if you want me to fix & optimize the entire query.
+
+⸻
+
+✅ Filtering & Logic
+
+Business Rule	Implementation
+Lookback window	Last 93 days → act.CREATE_TS::DATE BETWEEN CURRENT_DATE - 93 AND CURRENT_DATE
+Script must be valid status	PF.FILL_STATUS_CD IN (6,7,9)
+Bypass Codes	Activity Codes {40,101,109,111}
+Grouping granularity	Store, region hierarchy + fiscal week + activity
+
+✅ Supports weekly performance reporting
+✅ Mapped to clear operational KPIs
+
+⸻
+
+Next Step ✅
+
+Would you like:
+
+A️⃣ Add this metadata to the Master Source-to-Target Tracker
+B️⃣ Provide a downloadable CSV extract for documentation
+C️⃣ Auto-generate a table data dictionary (column definitions + business meaning)
+D️⃣ Automate lineage using a visual diagram (Mermaid or Lucidchart)
+
+Reply with: A, B, C, D or ALL ✅
