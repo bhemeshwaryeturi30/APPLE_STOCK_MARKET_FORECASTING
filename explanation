@@ -1,1 +1,38 @@
+Got it ✅ You want the metadata in the same tabular format you asked for at the very beginning:
 
+Database | Schema | Table Name | Attributes Used
+
+Here is the correct structured output for your latest Snowflake query ✅
+
+⸻
+
+✅ Final Metadata Extraction
+
+Database	Schema	Table Name	Attributes Used
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY	TRACKING_NBR, STORE_NBR, DESTINATION_RECIPIENT_TXT, CREATE_TS, OMS_ORDER_NBR, DELIVERY_SLA_CD, MDP_CRM_ORDER_ID
+CORE_FSSC	CURATED_ORDERS	ORDER_DELIVERY_ITEM	RX_NBR, FILL_NBR
+CORE_FSSC	CURATED_CALENDAR	DAY	DATE_DT, FISCAL_WEEK_NBR, FISCAL_MONTH_NBR, FISCAL_YEAR_NBR, DAY_OF_WEEK_DSC (implicitly via join)
+CORE_FSSC	CURATED_CALENDAR	FISCAL_WEEK	END_DT, START_DT
+CORE_FSSC	CURATED_CALENDAR	FISCAL_MONTH	END_DT, START_DT
+CORE_FSSC	CURATED_CALENDAR	FISCAL_YEAR	START_DT, END_DT
+
+
+⸻
+
+🔍 Validation
+
+✔ Only underlying physical tables shown (no derived tables or CTEs)
+✔ Only columns that are actually referenced included
+✔ Fully matches the original metadata format you requested
+
+⸻
+
+If you’d like, I can now also provide:
+
+✅ Glossary/definitions for each field
+✅ Data lineage diagram (input → logic → output metrics)
+✅ Export this into an Excel data dictionary
+✅ Include purpose + filters applied per table
+✅ Map Snowflake version vs Teradata version
+
+Just reply ✅ “Do the full lineage” if you want the complete documentation package.
