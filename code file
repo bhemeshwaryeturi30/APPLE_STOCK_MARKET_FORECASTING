@@ -1,187 +1,79 @@
+CREATE OR REPLACE TASK DL_RX_OPERATION.RX_OPS_SANDBOX.LOAD_PNP_SFS_RETURNS
+WAREHOUSE = WH_RX_QUERY_RXANALYTICS_01
+SCHEDULE = 'USING CRON 0 8 * * 1 America/New_York'
+AS CALL DL_RX_OPERATION.RX_OPS_SANDBOX.PNP_SFS_RETURNS_PROC();
 
-sql code 1:
+alter task DL_RX_OPERATION.RX_OPS_SANDBOX.REFRESH_MONDAY_EMAIL resume;
 
-/* 10 � order received 
-2 � pack/prep complete
-13- Handoff complete
-14 � Attempted Delivery
-4 � Delivered 
-8 � Cancelled
-*/
-
-WITH CF_PNP AS (
-select 
-      b.rx_nbr 
-    , b.store_nbr AS CF_STORE_NBR 
-    , b.fill_nbr 
-    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
-    , A.TRACKING_NBR
-    , A.COURIER_NM
-    , LISTAGG (distinct a.CREATE_USER_NM, ',') AS CREATE_USER_NM_LIST
-    , LISTAGG(distinct emp_det.first_nm, ',') AS FIRST_NM_LIST
-    , LISTAGG(distinct emp_det.last_nm ,',')  as Last_NM_LIST
-    , LISTAGG(distinct emp_det.JOB_TITLE_NM, ',') as Job_title_LIST
-    , max(case when c.order_status_cd = 2 then c.rec_eff_ts else null end) as label_Creation_TS
-    ,max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Shipping_TS
-    from core_fssc.curated_orders.order_delivery as a
-    join core_fssc.curated_orders.order_delivery_item as b
-    on a.order_id = b.order_id
-    and a.store_nbr = b.store_nbr
-     join (select 
-            order_id 
-          , store_nbr 
-          , order_status_cd 
-          , rec_eff_ts 
- 	  , TRACKING_NBR
-          , CREATE_USER_NM
-          , DELIVERY_SLA_CD
-          --history table does not have current record in it
-          from core_fssc.curated_orders.order_delivery_history 
-        union 
-           select 
-            order_id 
-          , store_nbr 
-          , order_status_cd 
-          , rec_eff_ts 
- 	      , TRACKING_NBR
-          , CREATE_USER_NM
-          , DELIVERY_SLA_CD
-         from core_fssc.curated_orders.order_delivery
-         where order_status_cd in (2,13)) as c  -- should be 13 as handoff status change 
-         
-    on a.order_id = c.order_id 
-    and a.store_nbr = c.store_nbr
-    and A.TRACKING_NBR = c.TRACKING_NBR
-left join CORE_RX.CURATED_SENSITIVE.EMPLOYEE as emp_det 
-on emp_det.EMPLOYEE_ID = c.CREATE_USER_NM
-WHERE 
-c.order_status_cd in (2,13)
-and a.DELIVERY_SLA_CD='CF-STS' -- CF delivery code
-AND TO_DATE(A.rec_eff_ts) >= (CURRENT_DATE() - 90) AND TO_DATE(A.rec_eff_ts) <= CURRENT_DATE()
-group by 1,2,3,4,5,6)
-
-
-
-
+CREATE OR REPLACE PROCEDURE DL_RX_OPERATION.RX_OPS_SANDBOX.PNP_SFS_RETURNS_PROC()
+RETURNS STRING
+LANGUAGE SQL
+EXECUTE AS CALLER
+AS
+$$
+BEGIN
+CREATE OR REPLACE TEMPORARY TABLE DELIVERY_RX_PnP AS (
 SELECT 
-CF_STORE_NBR
-,HOME_STORE_NBR
-,rx_nbr 
-,fill_nbr 
-,TRACKING_NBR
-,TO_DATE(label_Creation_TS) as Label_creation_date
-,date_part(hour,label_Creation_TS) as work_hour
-,label_Creation_TS
-,Shipping_TS
-,COURIER_NM
-,CREATE_USER_NM_LIST
-,Job_title_LIST
-,Concat (FIRST_NM_LIST, ' ', Last_NM_LIST) as Colleague_name
-,count (distinct TRACKING_NBR) as Package_count
-FROM CF_PNP 
-WHERE TRACKING_NBR is not null
-group by 1,2,3,4,5,6,7,8,9,10,11,12,13
-
-
-
-
-
-sql code 2:
-WITH CF_PNP AS (
-select 
-      b.rx_nbr 
-    , b.store_nbr AS CF_STORE_NBR 
-    , b.fill_nbr 
-    , CAST(A.DESTINATION_RECIPIENT_TXT AS INTEGER) AS HOME_STORE_NBR
-    , A.TRACKING_NBR
-    , A.COURIER_NM
-     --  ,max(case when c.order_status_cd = 13 then c.rec_eff_ts else null end) as Shipping_TS
-   ,LPAD(TO_VARCHAR(DATE_PART('hour', c.rec_eff_ts)), 2, '0') || ':' ||
-      LPAD(FLOOR(DATE_PART('minute', c.rec_eff_ts) / 15) * 15, 2, '0') ||
-      '-' ||
-      LPAD(
-        CASE
-          WHEN DATE_PART('minute', c.rec_eff_ts) < 15 THEN 15
-          WHEN DATE_PART('minute', c.rec_eff_ts) < 30 THEN 30
-          WHEN DATE_PART('minute', c.rec_eff_ts) < 45 THEN 45
-          ELSE 0
-        END, 2, '0'
-      ) AS EFFECTIVE_TS_quarter_label
-    ,LPAD(TO_VARCHAR(DATE_PART('hour', c.rec_eff_ts)), 2, '0') || ':00-' ||
-    LPAD(TO_VARCHAR((DATE_PART('hour',c.rec_eff_ts) + 1) % 24), 2, '0') || ':00' AS hour_label
-   , max(case when c.order_status_cd = 2 then c.rec_eff_ts else null end) as label_Creation_TS
-    , LISTAGG (distinct a.CREATE_USER_NM, ',') AS CREATE_USER_NM_LIST
-    , LISTAGG(distinct emp_det.first_nm, ',') AS FIRST_NM_LIST
-    , LISTAGG(distinct emp_det.last_nm ,',')  as Last_NM_LIST
-    , LISTAGG(distinct emp_det.JOB_TITLE_NM, ',') as Job_title_LIST
-    from core_fssc.curated_orders.order_delivery as a
-    join core_fssc.curated_orders.order_delivery_item as b
-    on a.order_id = b.order_id
-    and a.store_nbr = b.store_nbr
-     join (select 
-            order_id 
-          , store_nbr 
-          , order_status_cd 
-          , rec_eff_ts 
- 	  , TRACKING_NBR
-          , CREATE_USER_NM
-          , DELIVERY_SLA_CD
-          --history table does not have current record in it
-          from core_fssc.curated_orders.order_delivery_history 
-        union 
-           select 
-            order_id 
-          , store_nbr 
-          , order_status_cd 
-          , rec_eff_ts 
- 	      , TRACKING_NBR
-          , CREATE_USER_NM
-          , DELIVERY_SLA_CD
-         from core_fssc.curated_orders.order_delivery
-         where order_status_cd in (2,13)) as c  -- should be 13 as handoff status change 
-         
-    on a.order_id = c.order_id 
-    and a.store_nbr = c.store_nbr
-    and A.TRACKING_NBR = c.TRACKING_NBR
-left join CORE_RX.CURATED_SENSITIVE.EMPLOYEE as emp_det 
-on emp_det.EMPLOYEE_ID = c.CREATE_USER_NM
-WHERE 
-c.order_status_cd in (2,13)
-and a.DELIVERY_SLA_CD='CF-STS' -- CF delivery code
-AND TO_DATE(A.rec_eff_ts) >= (CURRENT_DATE() - 30) AND TO_DATE(A.rec_eff_ts) <= CURRENT_DATE()
-group by 1,2,3,4,5,6,7,8),
-
-
-TEMP AS (
-SELECT
- CF_STORE_NBR
-,CAL_DAY.FISCAL_WEEK_NBR
-,TO_DATE(label_Creation_TS) as Label_creation_date
-,CREATE_USER_NM_LIST
-,Job_title_LIST
-,hour_label
-,FIRST_NM_LIST
-,Last_NM_LIST
-,Concat (FIRST_NM_LIST, ' ', Last_NM_LIST) as Colleague_name
-,count (distinct TRACKING_NBR) as Package_count
-,COUNT(DISTINCT HOME_STORE_NBR,FILL_NBR,RX_NBR) AS SCRIPT_CNT
-,COUNT(DISTINCT EFFECTIVE_TS_quarter_label) AS QUATER_CNT
-FROM CF_PNP 
-JOIN CORE_FSSC.CURATED_CALENDAR.DAY AS CAL_DAY
-    ON CAL_DAY.DATE_DT = TO_DATE(Label_creation_date)
-    WHERE TRACKING_NBR is not null 
-  GROUP BY ALL
-)
-
+year(date(a.create_ts)) as Year
+, week(date(a.create_ts)) as Week
+, a.STORE_NBR
+, destination_address_street_1
+, destination_address_street_2
+, destination_address_city
+, destination_address_state
+, A.OMS_ORDER_NBR
+, a.order_id
+, tracking_nbr
+, MAX(CASE WHEN C.ORDER_STATUS_CD = 5 THEN C.REC_EFF_TS ELSE NULL END) AS Return_Completed
+, MAX(CASE WHEN C.ORDER_STATUS_CD = 18 THEN C.REC_EFF_TS ELSE NULL END) AS Return_yet_to_be_completed
+, ITEM_PRICE_AMT
+,CASE
+WHEN item_status = 5 AND line_item_cancel_reason ILIKE '%RETURN%' THEN 'Returned Sku'
+WHEN item_status = 5 AND NOT line_item_cancel_reason ILIKE '%RETURN%' THEN 'Missing Sku'
+END AS "Item Status"
+FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY AS A
+JOIN CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_ITEM AS B
+ON A.ORDER_ID = B.ORDER_ID
+AND A.STORE_NBR = B.STORE_NBR
+JOIN (SELECT 
+  ORDER_ID 
+, STORE_NBR 
+, ORDER_STATUS_CD 
+, REC_EFF_TS 
+--HISTORY TABLE DOES NOT HAVE CURRENT RECORD IN IT
+FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_HISTORY
+UNION 
 SELECT 
-CF_STORE_NBR
-,FISCAL_WEEK_NBR
-,Label_creation_date
-,Job_title_LIST
-,FIRST_NM_LIST
-,Last_NM_LIST
-,Colleague_name
-,sum(Package_count) as total_Packages
-,ROUND(SUM(QUATER_CNT)/4,1) AS HOURS_WORKED
-FROM TEMP 
-group by all
+  ORDER_ID 
+, STORE_NBR 
+, ORDER_STATUS_CD 
+, REC_EFF_TS 
+FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY) AS C
+ON A.ORDER_ID = C.ORDER_ID 
+AND A.STORE_NBR = C.STORE_NBR 
+where A.REC_EFF_TS >= current_date - 14
+and  order_type=13 
+and delivery_sla_cd='SFS_Mobile'
+GROUP BY ALL);
+
+Create OR REPLACE TABLE PNP_SFS_RETURNS AS
+select 
+Year
+, Week
+, STORE_NBR
+, destination_address_street_1
+, destination_address_street_2
+, destination_address_city
+, destination_address_state
+, OMS_ORDER_NBR
+, order_id
+, tracking_nbr
+, Return_Completed
+, Return_yet_to_be_completed
+, ITEM_PRICE_AMT
+from DELIVERY_RX_PnP
+where (Return_Completed is not null 
+or Return_yet_to_be_completed is not null);
+
+END;
+$$;
