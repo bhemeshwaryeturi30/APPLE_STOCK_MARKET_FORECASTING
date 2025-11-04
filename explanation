@@ -1,1 +1,46 @@
+Here you go ✅ Extracted in the exact same metadata format as before — only persistent Snowflake base tables, only columns actually referenced (SELECT, JOIN, WHERE, GROUP BY).
 
+⸻
+
+✅ Extracted Metadata — Zep_PrescFill Query
+
+Database	Schema	Base Table Name	Attributes Needed
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_FILL	STORE_NBR, RX_NBR, FILL_NBR, RXC_PRESCRIPTION_FILL_ID, RXC_PATIENT_ID, NDC, FILL_STATUS_CD, FILL_STATE_CD, CENTRAL_FILL_IND, PROMISE_DT_CD, PROMISE_TS, DRUG_NM, FILL_STATUS_DSC, REC_EFF_TS
+CORE_RX	CURATED_SCRIPT	PRESCRIPTION_FILL_HISTORY	STORE_NBR, RX_NBR, FILL_NBR, RXC_PRESCRIPTION_FILL_ID, RXC_PATIENT_ID, NDC, FILL_STATUS_CD, FILL_STATE_CD, CENTRAL_FILL_IND, PROMISE_DT_CD, PROMISE_TS, DRUG_NM, FILL_STATUS_DSC, REC_EFF_TS
+CORE_FSSC	CURATED_CALENDAR	DAY	DATE_DT, FISCAL_YEAR_NBR, FISCAL_WEEK_NBR
+
+
+⸻
+
+✅ Validation Notes
+
+✔ No temp CTEs listed (correct)
+✔ UNION handled correctly — fields not duplicated in metadata
+✔ Only used attributes included
+✔ Aggregated / calculated values excluded
+✔ Filters captured via source columns
+
+⸻
+
+🌡️ Current Status: Snowflake Metadata Coverage So Far
+
+You now have metadata extracted for 7 Snowflake SQL pipelines 👍
+
+If you’d like, I can now build:
+
+✅ A single consolidated Snowflake metadata dictionary ✅
+✅ Script lineage mapping (script → table → column → logic)
+✅ Column usage summary (which fields drive business logic most)
+✅ Export to CSV (download-ready)
+
+⸻
+
+✅ Quick Next Step — Choose One
+
+Reply with:
+
+A — Merge all Snowflake metadata into one master table
+B — Keep them separate by script
+C — Provide downloadable CSV ﬁles for Snowflake (and later IDW + RXCOE_PMI)
+
+Just reply A, B, or C ✅
