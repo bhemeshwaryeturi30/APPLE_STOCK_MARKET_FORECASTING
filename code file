@@ -1,652 +1,969 @@
 sql code 1:
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.OI_SUBCOMPONENTS AS (
- 
--- Updated location table to use KH location updated Weekly
-    WITH H AS(
-        SELECT HOME_STORE_NBR,
-        to_Date(RECORD_CREATED_TS) AS LAST_UPDATED_DATE
-        ,CASE
-            WHEN WORK_TYPE_CD ='1' THEN 'DEV'
-            WHEN WORK_TYPE_CD ='2' THEN 'WAVE'
-            WHEN WORK_TYPE_CD ='3' THEN 'DEV & WAVE'
-            WHEN WORK_TYPE_CD ='4' THEN 'QT'
-            WHEN WORK_TYPE_CD ='5' THEN 'QV2'
-            ELSE NULL
-         END AS WORK_TYPE_DESCRIPTION_FULL
-        ,SUM(CASE WHEN (HOME_STORE_NBR=PROCESSING_STORE_NBR AND WORK_STATUS_CD =2) OR (WORK_STATUS_CD=3 AND DISPOSITION_TYPE_CD=17) THEN 1 ELSE 0 END) AS OWN_WORK_DONE
-        ,SUM(CASE WHEN HOME_STORE_NBR != PROCESSING_STORE_NBR AND WORK_STATUS_CD = 2 THEN 1 ELSE 0 END) AS WORK_DONE_FOR_US
-        ,SUM(CASE WHEN HOME_STORE_NBR != PROCESSING_STORE_NBR AND PROCESSING_STORE_NBR >=60000  AND WORK_STATUS_CD = 2 THEN 1 ELSE 0 END) AS WORK_DONE_FOR_US_EXTERNAL
-        ,SUM(CASE WHEN HOME_STORE_NBR != PROCESSING_STORE_NBR AND PROCESSING_STORE_NBR <60000  AND WORK_STATUS_CD = 2 THEN 1 ELSE 0 END) AS WORK_DONE_FOR_US_AIRS
-        ,SUM(CASE WHEN WORK_STATUS_CD = 1 THEN 1 ELSE 0 END) AS ASSIGNED_WORK_ITEMS
-        ,SUM(CASE WHEN WORK_STATUS_CD =3 AND DISPOSITION_TYPE_CD <> 17 THEN 1 ELSE 0 END) AS PULL_BACK
-        ,COUNT(ID_VALUE_NBR) AS TOTAL_SHARABLE_WORK_ITEMS
-           
-        FROM CORE_RX.CURATED_SCRIPT.AIR_SUPPORT_ASSIGNMENT
-        GROUP BY 1,2,3
-    )
-    ,
-    P AS (
-    SELECT PROCESSING_STORE_NBR, to_date(RECORD_CREATED_TS) AS LAST_UPDATED_DATE
-        ,CASE
-            WHEN WORK_TYPE_CD ='1' THEN 'DEV'
-            WHEN WORK_TYPE_CD ='2' THEN 'WAVE'
-            WHEN WORK_TYPE_CD ='3' THEN 'DEV & WAVE'
-            WHEN WORK_TYPE_CD ='4' THEN 'QT'
-            WHEN WORK_TYPE_CD ='5' THEN 'QV2'
-            ELSE NULL
-            END AS WORK_TYPE_DESCRIPTION_FULL
-        ,SUM(CASE WHEN HOME_STORE_NBR !=PROCESSING_STORE_NBR AND WORK_STATUS_CD = 2 THEN 1 ELSE 0 END) AS WORK_WE_HELP_WITH
-    FROM CORE_RX.CURATED_SCRIPT.AIR_SUPPORT_ASSIGNMENT
-    GROUP BY 1,2,3
-    )
-   
-    ,
-   
-    FINAL_TABLE AS (
-        SELECT H.LAST_UPDATED_DATE
-            ,H.HOME_STORE_NBR AS STORE_NBR
-            ,H.OWN_WORK_DONE
-            ,H.WORK_DONE_FOR_US
-            ,H.WORK_DONE_FOR_US_EXTERNAL
-            ,H.WORK_DONE_FOR_US_AIRS
-            ,P.WORK_WE_HELP_WITH
-            ,H.WORK_TYPE_DESCRIPTION_FULL
-            ,CAL.FISCAL_WEEK_NBR
-            ,CAL.DAY_OF_WEEK_DSC
-            ,LOC.RX_DIVISION
-            ,LOC.RX_REGION
-            ,LOC.RX_DISTRICT
-            ,LOC.STATE AS STATE_CD
-        FROM H
-        LEFT JOIN P
-            ON H.HOME_STORE_NBR = P.PROCESSING_STORE_NBR
-            AND H.LAST_UPDATED_DATE = P.LAST_UPDATED_DATE
-            AND H.WORK_TYPE_DESCRIPTION_FULL = P.WORK_TYPE_DESCRIPTION_FULL
-        LEFT JOIN CORE_FSSC.CURATED_CALENDAR.DAY AS CAL
-            ON CAL.DATE_DT = H.LAST_UPDATED_DATE
-        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.KH_LOCATION AS LOC
-            ON H.HOME_STORE_NBR = LOC.STORE_NBR  
-    )
-   
-    ,
-   
-    CTE AS (
-        SELECT STORE_NBR
-            ,FISCAL_WEEK_NBR
-            ,RX_DIVISION
-            ,RX_REGION
-            ,RX_DISTRICT
-            ,SUM(OWN_WORK_DONE) AS OWN_WORK_DONE
-            ,SUM(WORK_DONE_FOR_US) AS WORK_DONE_FOR_US
-            ,SUM(WORK_WE_HELP_WITH) AS WORK_WE_HELP_WITH
-            ,SUM(OWN_WORK_DONE) +  SUM(WORK_DONE_FOR_US) AS TOTAL_SHAREABLE_WORK
-        FROM FINAL_TABLE
-        WHERE FISCAL_WEEK_NBR >= 202401
-   
-    GROUP BY 1,2,3,4,5
-    )
- 
-SELECT * FROM CTE
- 
-);
-
-SELECT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.OI_SUBCOMPONENTS 
+--CWT Weekly Volumes-- 
+SELECT
+ c.fiscal_week_nbr AS Fiscal_Week
+,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_bfr_answr_drtn_cnt AS DECIMAL (12,2)) ELSE 0 end)) Time_To_Answer_Duration
+,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_answr_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) Total_Calls_Answered
+,(NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_bfr_answr_drtn_cnt AS DECIMAL (12,2)) ELSE 0 end)) / NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_answr_call_cnt AS DECIMAL (12,2)) ELSE 0 end))) Avg_Time_To_Answer_In_Seconds
+,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (tot_hold_drtn AS DECIMAL (12,2))ELSE 0 end)) Hold_Time_Duration
+,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_hold_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) Total_Calls_Placed_On_Hold
+,(NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (tot_hold_drtn AS DECIMAL (12,2))ELSE 0 end)) / NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_hold_call_cnt AS DECIMAL (12,2)) ELSE 0 end))) AS Avg_Total_Hold_Time_In_Seconds
+,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_abndn_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) total_unanswered_calls --Abandonment Numerator
+,NullIfZero(Sum(CASE WHEN grp_cd = 2 THEN Cast (a.tot_non_drv_up_call_cnt AS DECIMAL (12,2)) ELSE 0 end)) total_call_count--Abandomnent Denominator
+FROM idw_rx_operations_s_bc.sem_fact_vert_store_kpm_dly a
+INNER JOIN idw_common.sem_dim_all_store b
+ON a.store_id = b.store_id
+INNER JOIN idw_common.sem_dim_all_fiscal_cal_day c
+ON a.lcl_day_dt = c.day_dt
+WHERE fiscal_week_nbr = 202532 -- UPDATE THE FISCAL WEEK
+AND grp_cd IN (2,3)
+AND area_nbr IN (1,2,3,4,5,7,8,9,12)
+ORDER BY 1
+GROUP BY 1
 
 sql code 2:
+--- Step 3 
+SET FW_NBR = 202544; -- SET FW NUMBER HERE
 
---Update Fiscal Weeks
-SET START_WEEK = 202536;
-SET END_WEEK = 202539;
+--- BELOW CODE WILL GENERATE CIQ NUM AND DEN FOR WEEKLY FILES TO BE SUBMITTED TO SFTP FOLDER
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP AS (
-
-----------------------------------Paste Updated Query Here -----------------------------------------------------------------------------------------
-
-WITH SCPLH AS (
-
-    SELECT FLEX_VOL_BAND, 
-        SUM(AVG_FLEX) AS SUM_FLEX
-       ,SUM(AVG_TOTAL_DEMAND) SUM_TOTAL_DEMAND
-       ,ROUND(SUM(AVG_FLEX)/SUM(AVG_TOTAL_DEMAND),2) AS ScPLH
-    FROM (
-        SELECT FLEX.STORE_NBR
-            ,ROUND(AVG(FLEX_SCRIPTS),0) AS AVG_FLEX
-            ,ROUND(AVG(TECH_DEMAND+RPH_DEMAND),0) AS AVG_TOTAL_DEMAND
-            , CASE 
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) <50 THEN '0-49'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 50 AND 99 THEN '50-99'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 100 AND 149 THEN '100-149'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 150 AND 199 THEN '150-199'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 200 AND 249 THEN '200-249'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 250 AND 299 THEN '250-299'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 300 AND 349 THEN '300-349'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 350 AND 399 THEN '350-399'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 400 AND 449 THEN '400-449'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 450 AND 499 THEN '450-499'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 500 AND 549 THEN '500-549'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 550 AND 599 THEN '550-599'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 600 AND 649 THEN '600-649'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 650 AND 699 THEN '650-699'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 700 AND 749 THEN '700-749'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 750 AND 799 THEN '750-799'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0)BETWEEN 800 AND 849 THEN '800-849'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 850 AND 899 THEN '850-899'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 900 AND 949 THEN '900-949'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 950 AND 999 THEN '950-999'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 1000 AND 1499 THEN '1000-1499'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 1500 AND 1999 THEN '1500-1999'
-                WHEN ROUND(AVG(FLEX_SCRIPTS),0) >=2000 THEN '>=2000'
-            END AS FLEX_VOL_BAND
-        FROM RX_OPS_SANDBOX.REAL_TIME_FLEX FLEX
-        INNER JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.AVD AVD
-            ON FLEX.STORE_NBR = AVD.STORE_NBR AND FLEX.FISCAL_WEEK_NBR = AVD.FISCAL_WEEK_NBR
-        WHERE FLEX.FISCAL_WEEK_NBR BETWEEN $START_WEEK and $END_WEEK
-        AND (TECH_DEMAND IS NOT NULL OR RPH_DEMAND IS NOT NULL) AND FLEX_SCRIPTS >0
-        GROUP BY 1
-    ) AS A
-    GROUP BY FLEX_VOL_BAND
-    ORDER BY SCPLH 
-)
-, 
-
---Flex Table
-FLEX AS (
-
-    SELECT  STORE_NBR
-        , ROUND(AVG(BUDGET_SCRIPTS),0) AS AVG_BUD_SCRIPT
-        , ROUND(AVG(FLEX_SCRIPTS),0) AS AVG_FLEX_SCRIPT
-        , CASE WHEN AVG(FLEX_SCRIPTS) > 1.05* AVG(BUDGET_SCRIPTS) THEN 'ADJUST' ELSE 'DO NOT ADJUST' END AS ADJUST_FLAG
-        , CASE 
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) <50 THEN '0-49'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 50 AND 99 THEN '50-99'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 100 AND 149 THEN '100-149'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 150 AND 199 THEN '150-199'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 200 AND 249 THEN '200-249'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 250 AND 299 THEN '250-299'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 300 AND 349 THEN '300-349'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 350 AND 399 THEN '350-399'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 400 AND 449 THEN '400-449'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 450 AND 499 THEN '450-499'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 500 AND 549 THEN '500-549'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 550 AND 599 THEN '550-599'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 600 AND 649 THEN '600-649'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 650 AND 699 THEN '650-699'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0)BETWEEN 700 AND 749 THEN '700-749'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0)BETWEEN 750 AND 799 THEN '750-799'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 800 AND 849 THEN '800-849'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 850 AND 899 THEN '850-899'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 900 AND 949 THEN '900-949'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 950 AND 999 THEN '950-999'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 1000 AND 1499 THEN '1000-1499'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) BETWEEN 1500 AND 1999 THEN '1500-1999'
-            WHEN ROUND(AVG(FLEX_SCRIPTS),0) >=2000 THEN '>=2000'
-        END AS FLEX_VOL_BAND
-        , ROUND(CASE WHEN ADJUST_FLAG = 'ADJUST'THEN AVG(BUDGET_SCRIPTS) - AVG(FLEX_SCRIPTS) ELSE 0 END,0) AS FLEX_DELTA
-    FROM RX_OPS_SANDBOX.REAL_TIME_FLEX 
-    WHERE FISCAL_WEEK_NBR BETWEEN $START_WEEK AND $END_WEEK
-    AND FLEX_SCRIPTS >0
-    GROUP BY 1
-    ORDER BY STORE_NBR 
-)
-
-, 
-
-FLEX_ADJ AS (
-
-    SELECT FLEX.STORE_NBR
-        ,ADJUST_FLAG
-        ,CASE WHEN Round(FLEX_DELTA / SCPLH,0) < -10 THEN -10 ELSE Round(FLEX_DELTA / SCPLH,0) END AS FLEX_HRS_ADJ
-    FROM FLEX
-    LEFT JOIN SCPLH
-        ON FLEX.FLEX_VOL_BAND = SCPLH.FLEX_VOL_BAND
-)
+WITH VERTICAL AS (
 
 
 SELECT 
-     CAP.STORE_NBR
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN T1_CAP_RAW ELSE (CASE WHEN (T1_CAP_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (T1_CAP_RAW + FLEX_HRS_ADJ) END) END AS T1_CAP
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN T2_CAP_RAW ELSE (CASE WHEN (T2_CAP_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (T2_CAP_RAW + FLEX_HRS_ADJ) END) END AS T2_CAP
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN T3_CAP_RAW ELSE (CASE WHEN (T3_CAP_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (T3_CAP_RAW + FLEX_HRS_ADJ) END) END AS T3_CAP
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN AVG_T1T2_CAP_RAW ELSE (CASE WHEN (AVG_T1T2_CAP_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (AVG_T1T2_CAP_RAW + FLEX_HRS_ADJ) END) END AS       AVG_T1T2_CAP
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN SEPT_RAW ELSE (CASE WHEN (SEPT_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (SEPT_RAW + FLEX_HRS_ADJ) END) END AS SEPT
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN OCT_RAW ELSE (CASE WHEN (OCT_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (OCT_RAW + FLEX_HRS_ADJ) END) END AS OCT
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN NOV_RAW ELSE (CASE WHEN (NOV_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (NOV_RAW + FLEX_HRS_ADJ) END) END AS NOV
-    ,CASE WHEN FLEX_HRS_ADJ IS NULL THEN DEC_RAW ELSE (CASE WHEN (DEC_RAW + FLEX_HRS_ADJ)<0 THEN 0 ELSE  (DEC_RAW + FLEX_HRS_ADJ) END) END AS DEC
-FROM DL_RX_OPERATION.RX_OPS_SANDBOX.CAP_SUMMARY AS CAP
-LEFT JOIN FLEX_ADJ
-    ON CAP.STORE_NBR = FLEX_ADJ.STORE_NBR
+STORE_NBR,
+IVR_DATE,
+FISCAL_WEEK_NBR,
+COUNT_STORE,
+SUM_DUR
+
+FROM (
+
+SELECT
+CB.STORE_NBR AS STORE_NBR,
+to_date(CB.CALL_DETAIL_TS) AS IVR_DATE,
+CAL.FISCAL_WEEK_NBR AS FISCAL_WEEK_NBR,
+COUNT(CB.STORE_NBR) AS COUNT_STORE,
+SUM(CALL_DURATION_AMT) AS SUM_DUR
+
+FROM (
+SELECT * FROM core_rx.curated_outreach.vertical_call_detail Where TO_DATE(CALL_DETAIL_TS) >= '2023-01-10'
+AND CALL_TYPE_ID = 1
+AND FIRST_DESTINATION_NBR NOT LIKE '%T0%'
+AND FIRST_DESTINATION_NBR != 'Unknown'
+AND FIRST_DESTINATION_NBR NOT LIKE '%*%'
+AND length(FIRST_DESTINATION_NBR) >= 10
+) AS CB
+    LEFT JOIN CORE_FSSC.CURATED_CALENDAR.DAY AS CAL
+    ON CAL.DATE_DT = to_date(CB.CALL_DETAIL_TS)
+Where CAL.FISCAL_WEEK_NBR = $FW_NBR
+GROUP BY 1,2,3 ORDER BY 1,2 ASC
+)
+
+),
+
+CB_SLA AS (
+
+SELECT 
+STORE_NO,
+QT_DATE,
+FSCL_WK, 
+SUM(CB_60_NUM) AS CB_60_NUM,
+SUM(CB_60_DEN) AS CB_60_DEN
+FROM(
+
+SELECT
+
+STORE_NBR_VM AS STORE_NO,
+to_date(TRIAGE_INDUCTION_TS) AS QT_DATE,
+FISCAL_WEEK_NBR AS FSCL_WK, 
+SUM(CASE WHEN SMS_SLA_IND = 1 THEN 1 WHEN CALL_DURATION_AMT >= 10 THEN SLA_IND ELSE 0 END) AS CB_60_NUM,
+COUNT(RXP_VOICEMAIL_TRANSACTION_SEQ_ID) AS CB_60_DEN
+
+FROM (
+SELECT DISTINCT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.CIQ_FINAL_DATA_SMS
+WHERE RXP_VOICEMAIL_TRANSACTION_SEQ_ID NOT IN (
+SELECT DISTINCT RXP_VOICEMAIL_TRANSACTION_SEQ_ID  FROM (SELECT RXP_VOICEMAIL_TRANSACTION_SEQ_ID, SOURCE_CAP_CALLBACK_PREFERENCE, CASE WHEN EXTERNAL_DISPOSITION_CD IS NULL THEN 0 ELSE EXTERNAL_DISPOSITION_CD END AS EXTERNAL_DISPOSITION_CD FROM CORE_RX.CURATED_OUTREACH.VOICEMAIL_TRANSACTION) WHERE SOURCE_CAP_CALLBACK_PREFERENCE = 'N' AND EXTERNAL_DISPOSITION_CD NOT IN (6354,6353,6456)
+UNION
+SELECT RXP_VOICEMAIL_TRANSACTION_SEQ_ID FROM CORE_RX.CURATED_OUTREACH.VOICEMAIL_TRANSACTION 
+WHERE LOWER(transcription_txt) LIKE '%ordernumber%' AND TO_DATE(VOICEMAIL_TS) >=  '2025-06-17' AND LOWER(transcription_txt) LIKE '%caller indicated no callback needed%'
+))
+Where FISCAL_WEEK_NBR = $FW_NBR
+GROUP BY 1,2,3
 
 
----------------------------------------------------------------------------------------------------------------------------------------------------
+UNION 
 
-);
+SELECT
 
-SELECT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP
+STORE_NBR_VM AS STORE_NO,
+to_date(TRIAGE_INDUCTION_TS) AS QT_DATE,
+FISCAL_WEEK_NBR AS FSCL_WK, 
+SUM(CASE WHEN SMS_SLA_IND = 1 THEN 1 WHEN CALL_DURATION_AMT >= 10 THEN SLA_IND ELSE 0 END) AS CB_60_NUM,
+SUM(CASE WHEN SMS_SLA_IND = 1 THEN 1 WHEN CALL_DURATION_AMT >= 10 THEN SLA_IND ELSE 0 END) AS CB_60_DEN
+
+FROM (
+SELECT DISTINCT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.CIQ_FINAL_DATA_SMS
+WHERE RXP_VOICEMAIL_TRANSACTION_SEQ_ID IN (
+SELECT DISTINCT RXP_VOICEMAIL_TRANSACTION_SEQ_ID  FROM (SELECT RXP_VOICEMAIL_TRANSACTION_SEQ_ID, SOURCE_CAP_CALLBACK_PREFERENCE, CASE WHEN EXTERNAL_DISPOSITION_CD IS NULL THEN 0 ELSE EXTERNAL_DISPOSITION_CD END AS EXTERNAL_DISPOSITION_CD FROM CORE_RX.CURATED_OUTREACH.VOICEMAIL_TRANSACTION) WHERE SOURCE_CAP_CALLBACK_PREFERENCE = 'N' AND EXTERNAL_DISPOSITION_CD NOT IN (6354,6353,6456)
+UNION
+SELECT RXP_VOICEMAIL_TRANSACTION_SEQ_ID FROM CORE_RX.CURATED_OUTREACH.VOICEMAIL_TRANSACTION 
+WHERE LOWER(transcription_txt) LIKE '%ordernumber%' AND TO_DATE(VOICEMAIL_TS) >=  '2025-06-17' AND LOWER(transcription_txt) LIKE '%caller indicated no callback needed%'
+) 
+) 
+Where FISCAL_WEEK_NBR = $FW_NBR
+GROUP BY 1,2,3
+)
+
+GROUP BY 1,2,3
+),
+
+CB_SD AS (
+
+SELECT 
+STORE_NO,
+QT_DATE,
+FSCL_WK,
+SUM(CB_DAY_NUM) AS CB_DAY_NUM,
+SUM(CB_DAY_DEN) AS CB_DAY_DEN
+FROM(
+
+SELECT
+
+STORE_NBR_VM AS STORE_NO,
+to_date(TRIAGE_INDUCTION_TS) AS QT_DATE,
+FISCAL_WEEK_NBR AS FSCL_WK, 
+SUM(CASE WHEN SMS_RXP_VOICEMAIL_TRANSACTION_SEQ_ID IS NOT NULL THEN 1 WHEN CALL_DURATION_AMT >= 10 THEN MATCH_IND ELSE 0 END) AS CB_DAY_NUM,
+COUNT(RXP_VOICEMAIL_TRANSACTION_SEQ_ID) AS CB_DAY_DEN
+
+FROM (
+SELECT DISTINCT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.CIQ_FINAL_DATA_SMS
+WHERE RXP_VOICEMAIL_TRANSACTION_SEQ_ID NOT IN (SELECT DISTINCT RXP_VOICEMAIL_TRANSACTION_SEQ_ID FROM CORE_RX.CURATED_OUTREACH.VOICEMAIL_TRANSACTION WHERE SOURCE_CAP_CALLBACK_PREFERENCE = 'N')
+) 
+Where FISCAL_WEEK_NBR = $FW_NBR
+
+GROUP BY 1,2,3
+
+UNION
+
+SELECT
+
+STORE_NBR_VM AS STORE_NO,
+to_date(TRIAGE_INDUCTION_TS) AS QT_DATE,
+FISCAL_WEEK_NBR AS FSCL_WK, 
+SUM(CASE WHEN SMS_RXP_VOICEMAIL_TRANSACTION_SEQ_ID IS NOT NULL THEN 1 WHEN CALL_DURATION_AMT >= 10 THEN MATCH_IND ELSE 0 END) AS CB_DAY_NUM,
+SUM(CASE WHEN SMS_RXP_VOICEMAIL_TRANSACTION_SEQ_ID IS NOT NULL THEN 1 WHEN CALL_DURATION_AMT >= 10 THEN MATCH_IND ELSE 0 END) AS CB_DAY_DEN,
+
+FROM (
+SELECT DISTINCT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.CIQ_FINAL_DATA_SMS
+WHERE RXP_VOICEMAIL_TRANSACTION_SEQ_ID IN (SELECT DISTINCT RXP_VOICEMAIL_TRANSACTION_SEQ_ID FROM CORE_RX.CURATED_OUTREACH.VOICEMAIL_TRANSACTION WHERE SOURCE_CAP_CALLBACK_PREFERENCE = 'N')
+) 
+Where FISCAL_WEEK_NBR = $FW_NBR
+
+GROUP BY 1,2,3
+)
+GROUP BY 1,2,3
+),
+
+RAW_DATA AS (
+--SELECT DISTINCT STORE_NO, COUNT(STORE_NO) FROM (
+--SELECT DISTINCT FSCL_WK, SUM(CB_SLA_DEN), SUM(CASE WHEN IVR_FLAG =1 THEN CB_SLA_DEN ELSE 0 END) AS IMPACT, COUNT(DISTINCT STORE_NO), COUNT(DISTINCT CASE WHEN IVR_FLAG =1 THEN STORE_NO ELSE NULL END) AS IMPACTED_STORE_COUNT, COUNT(QT_DATE), SUM(IVR_FLAG) AS STORE_IMPACT FROM (
+SELECT
+
+A.STORE_NO,
+A.QT_DATE,
+A.FSCL_WK,
+A.CB_60_NUM AS CB_SLA_NUM,
+A.CB_60_DEN AS CB_SLA_DEN,
+B.CB_DAY_NUM AS CB_EOD_NUM,
+B.CB_DAY_DEN AS CB_EOD_DEN,
+C.COUNT_STORE,
+C.SUM_DUR,
+CASE WHEN C.COUNT_STORE IS NULL THEN 1
+     WHEN C.COUNT_STORE = 0 THEN 1
+     WHEN C.SUM_DUR = 0 THEN 1
+     ELSE 0
+     END AS IVR_FLAG
 
 
+FROM CB_SLA AS A
+    LEFT JOIN CB_SD AS B
+    ON A.STORE_NO = B.STORE_NO AND A.QT_DATE = B.QT_DATE 
+    LEFT JOIN VERTICAL AS C
+    ON A.STORE_NO = C.STORE_NBR AND A.QT_DATE = C.IVR_DATE
+--Where IVR_FLAG = 1 -- ( 0 = Good Data -- 1 = Bad Data)
+   ORDER BY 1,2 ASC
+--) GROUP BY 1 ORDER BY 2 DESC
+--) GROUP BY 1 ORDER BY 1 DESC
+)
+
+SELECT
+
+STORE_NO,
+FSCL_WK,
+CASE WHEN DAYS_OF_GOOD_DATA >= 4 THEN NEW_SLA_NUM ELSE NULL END AS NEW_SLA_NUM,
+CASE WHEN DAYS_OF_GOOD_DATA >= 4 THEN NEW_SLA_DEN ELSE NULL END AS NEW_SLA_DEN,
+CASE WHEN DAYS_OF_GOOD_DATA >= 4 THEN NEW_EOD_NUM ELSE NULL END AS NEW_EOD_NUM,
+CASE WHEN DAYS_OF_GOOD_DATA >= 4 THEN NEW_EOD_DEN ELSE NULL END AS NEW_EOD_DEN,
+CASE WHEN DAYS_OF_GOOD_DATA <4 THEN 1 ELSE 0 END AS EXCLUSION_FLAG
+
+FROM (
+
+
+SELECT 
+STORE_NO,
+FSCL_WK,
+SUM(CB_SLA_NUM) AS "RAW_SLA_NUM",
+SUM(CB_SLA_DEN) AS "RAW_SLA_DEN",
+SUM(CB_EOD_NUM) AS "RAW_EOD_NUM",
+SUM(CB_EOD_DEN) AS "RAW_EOD_DEN",
+SUM(COUNT_STORE) AS "#_OF_OB_CALLS",
+SUM(SUM_DUR) AS "OB_TALK_TIME_DUR",
+COUNT(DISTINCT QT_DATE) AS "DAYS_OF_DATA",
+COUNT(CASE WHEN IVR_FLAG = 0 THEN IVR_FLAG ELSE NULL END) AS "DAYS_OF_GOOD_DATA",
+SUM(IVR_FLAG) AS "DAYS_OF_BAD_DATA",
+SUM(CASE WHEN IVR_FLAG = 0 THEN CB_SLA_NUM ELSE NULL END) AS "NEW_SLA_NUM",
+SUM(CASE WHEN IVR_FLAG = 0 THEN CB_SLA_DEN ELSE NULL END) AS "NEW_SLA_DEN",
+SUM(CASE WHEN IVR_FLAG = 0 THEN CB_EOD_NUM ELSE NULL END) AS "NEW_EOD_NUM",
+SUM(CASE WHEN IVR_FLAG = 0 THEN CB_EOD_DEN ELSE NULL END) AS "NEW_EOD_DEN",
+SUM(CASE WHEN IVR_FLAG = 1 THEN CB_SLA_DEN ELSE NULL END) AS "NEW_REMOVE_FROM_DEN",
+
+FROM RAW_DATA --Where STORE_NO = 7574
+
+GROUP by 1,2
+ORDER BY 2 DESC
+)
 
 
 sql code 3:
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP_ADJ AS (
+-----2025 CO post DST 3.3.25 
+CREATE MULTISET VOLATILE TABLE CARRYOVER_FILLS AS ( 
+SELECT  
+                                 AREA_NBR AS DIVISION   
+                                ,RGN_NBR AS REGION  
+                                ,DSTRT_NBR AS DISTRICT  
+                                ,ST.STORE_NBR AS STORE  
+                                ,TM_ZONE    
+                                ,T1.PRSCRT_FILL_ID  
+                                ,T1.RXC_PTNT_ID 
+                                ,T1.NDC 
+                                ,CASE WHEN RF.PRSCRT_FILL_ID IS NULL THEN 'N' ELSE 'Y' END AS READY_FILL_IND    
+                                ,VERIFY_DATE    
+                                ,FILL_DATE  
+                                ,FILL_DT    
+                                ,VERIFY_DT  
+                                ,ORGNL_PRMS_TM  
+                                ,CASE   
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(VERIFY_DT AS DATE) BETWEEN '2021-11-07' AND '2022-03-12' 
+                                             THEN VERIFY_DT + INTERVAL '1' HOUR     
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(VERIFY_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05' 
+                                             THEN VERIFY_DT     
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(VERIFY_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11' 
+                                             THEN VERIFY_DT + INTERVAL '1' HOUR     
+                                                
+                                             WHEN UPPER(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND CAST(VERIFY_DT as DATE) BETWEEN '2023-03-12' AND '2023-11-05' 
+                                             THEN VERIFY_DT 
+                                             
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(VERIFY_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                             THEN VERIFY_DT + INTERVAL '1' HOUR  
+											 
+											 WHEN UPPER(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND CAST(VERIFY_DT as DATE) BETWEEN '2024-03-11' AND '2024-11-03' 
+                                             THEN VERIFY_DT 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(VERIFY_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'  
+                                             THEN VERIFY_DT + INTERVAL '1' HOUR  
+											 
+											 WHEN UPPER(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND CAST(VERIFY_DT as DATE) BETWEEN '2025-03-09' AND '2025-11-02' 
+                                             THEN VERIFY_DT 
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%CENTRAL%'    
+                                             THEN VERIFY_DT  - INTERVAL '1' HOUR    
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%MOUNTAIN%'   
+                                             THEN VERIFY_DT  - INTERVAL '2' HOUR    
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PACIFIC%'    
+                                             THEN VERIFY_DT  - INTERVAL '3' HOUR    
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%' AND Cast(VERIFY_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'     
+                                             THEN VERIFY_DT  - INTERVAL '2' HOUR   
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND CAST(VERIFY_DT as DATE) BETWEEN '2024-03-11' AND '2024-11-03'   
+                                             THEN VERIFY_DT  - INTERVAL '3' HOUR 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%' AND Cast(VERIFY_DT AS DATE)  BETWEEN '2024-11-04' AND '2025-03-08'     
+                                             THEN VERIFY_DT  - INTERVAL '2' HOUR 
+											 
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND CAST(VERIFY_DT as DATE) BETWEEN '2025-03-09' AND '2025-11-02'   
+                                             THEN VERIFY_DT  - INTERVAL '3' HOUR    
+											 
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ALASKA%' 
+                                             THEN VERIFY_DT  - INTERVAL '4' HOUR    
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND  Cast(VERIFY_DT AS DATE) BETWEEN '2021-11-07' AND '2022-03-12'  
+                                             THEN VERIFY_DT  - INTERVAL '5' HOUR    
+                                                            
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND  Cast(VERIFY_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05'  
+                                             THEN VERIFY_DT  - INTERVAL '6' HOUR    
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND  Cast(VERIFY_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11'  
+                                             THEN VERIFY_DT  - INTERVAL '5' HOUR    
+                                                
+                                             WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND  CAST(VERIFY_DT as DATE) BETWEEN '2023-03-12' AND '2023-11-05'  
+                                            THEN VERIFY_DT  - INTERVAL '6' HOUR 
+											
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND  Cast(VERIFY_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                             THEN VERIFY_DT  - INTERVAL '5' HOUR  
+											 
+											WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND  CAST(VERIFY_DT as DATE) BETWEEN '2024-03-11' AND '2024-11-03' 
+                                            THEN VERIFY_DT  - INTERVAL '6' HOUR 
+                                             
+											  WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND  Cast(VERIFY_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'     
+                                             THEN VERIFY_DT  - INTERVAL '5' HOUR  	
+											
+											WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND  CAST(VERIFY_DT as DATE) BETWEEN '2025-03-09' AND '2025-11-02'  
+                                            THEN VERIFY_DT  - INTERVAL '6' HOUR 	
+												
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%EASTERN%'    
+                                             THEN VERIFY_DT 
+                                                
+                                             ELSE NULL  
+                                        END AS VERIFY_DT_LC  ---- THIS FIELD NEEDS TO BE UPDATED EVERY YEAR TO REFLECT DAYLIGHT SAVINGS START AND END DATE  
+                                        ,Cast(VERIFY_DT_LC AS DATE) AS VERIFY_DATE_LC ---- THIS FIELD NEEDS TO BE UPDATED EVERY YEAR TO REFLECT DAYLIGHT SAVINGS START AND END DATE     
+                                        ,CASE   
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2021-11-07' AND '2022-03-12'   
+                                             THEN Cast((FILL_DT + INTERVAL '1' HOUR) AS DATE)   
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05'   
+                                             THEN Cast(FILL_DT AS DATE) 
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11'   
+                                             THEN Cast((FILL_DT + INTERVAL '1' HOUR) AS DATE)   
+                                                
+                                              WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2023-03-12' AND '2023-11-05'  
+                                             THEN Cast(FILL_DT AS DATE) 
+                                             
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                             THEN Cast((FILL_DT + INTERVAL '1' HOUR) AS DATE)  
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'  
+                                             THEN Cast(FILL_DT AS DATE) 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'  
+                                             THEN Cast((FILL_DT + INTERVAL '1' HOUR) AS DATE) 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2025-03-09' AND '2025-11-02'  
+                                             THEN Cast(FILL_DT AS DATE) 
+											 
+							
+                                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%CENTRAL%'    
+                                             THEN Cast((FILL_DT - INTERVAL '1' HOUR) AS DATE)   
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%MOUNTAIN%'   
+                                             THEN Cast((FILL_DT - INTERVAL '2' HOUR) AS DATE)   
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PACIFIC%'    
+                                             THEN Cast((FILL_DT - INTERVAL '3' HOUR) AS DATE)   
+                                        
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(FILL_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                             THEN Cast((FILL_DT - INTERVAL '2' HOUR) AS DATE)  
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(FILL_DT AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'  
+                                             THEN Cast((FILL_DT - INTERVAL '3' HOUR) AS DATE)  
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(FILL_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08' 
+                                             THEN Cast((FILL_DT - INTERVAL '2' HOUR) AS DATE)  
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(FILL_DT AS DATE) BETWEEN '2025-03-09' AND '2025-11-02'  
+                                             THEN Cast((FILL_DT - INTERVAL '3' HOUR) AS DATE)
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ALASKA%' 
+                                             THEN Cast((FILL_DT - INTERVAL '4' HOUR) AS DATE)   
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE)  BETWEEN '2021-11-07' AND '2022-03-12'    
+                                             THEN Cast((FILL_DT - INTERVAL '5' HOUR) AS DATE)   
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05' 
+                                             THEN Cast((FILL_DT - INTERVAL '6' HOUR) AS DATE)   
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11' 
+                                             THEN Cast((FILL_DT - INTERVAL '5' HOUR) AS DATE)   
+                                                
+                                             WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2023-03-12' AND '2023-11-05'    
+                                            THEN cast((FILL_DT - INTERVAL '6' HOUR) as date)    
+                                            
+                                            WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                            THEN Cast((FILL_DT - INTERVAL '5' HOUR) AS DATE)  
+											
+											WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2024-03-11' AND '2024-11-03'   
+                                            THEN cast((FILL_DT - INTERVAL '6' HOUR) as date)  
+                                             
+											 WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08' 
+                                            THEN Cast((FILL_DT - INTERVAL '5' HOUR) AS DATE)  
+											
+											WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2025-03-09' AND '2025-11-02'    
+                                            THEN cast((FILL_DT - INTERVAL '6' HOUR) as date)  
+											
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%EASTERN%'    
+                                             THEN Cast(FILL_DT AS DATE) 
+                                                
+                                             ELSE NULL  
+                                        END AS FILL_DATE_LC ---- THIS FIELD NEEDS TO BE UPDATED EVERY YEAR TO REFLECT DAYLIGHT SAVINGS START AND END DATE   
+                                ,CASE   
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE)  BETWEEN '2021-11-07' AND '2022-03-12'  
+                                             THEN FILL_DT + INTERVAL '1' HOUR   
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05'   
+                                             THEN FILL_DT   
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11'   
+                                             THEN FILL_DT + INTERVAL '1' HOUR   
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2023-03-12' AND '2023-11-05'   
+                                             THEN FILL_DT
+                                             
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                             THEN FILL_DT + INTERVAL '1' HOUR 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'  
+                                             THEN FILL_DT
+											 
+											  WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'  
+                                             THEN FILL_DT + INTERVAL '1' HOUR 
+											 
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(FILL_DT AS DATE)  BETWEEN '2025-03-09' AND '2025-11-02'   
+                                             THEN FILL_DT       
+											 
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%CENTRAL%'    
+                                             THEN FILL_DT - INTERVAL '1' HOUR   
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%MOUNTAIN%'   
+                                             THEN FILL_DT - INTERVAL '2' HOUR   
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PACIFIC%'    
+                                             THEN FILL_DT - INTERVAL '3' HOUR   
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%' AND Cast(FILL_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'     
+                                             THEN FILL_DT - INTERVAL '2' HOUR   
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%' AND Cast(FILL_DT AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'   
+                                             THEN FILL_DT - INTERVAL '3' HOUR 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%' AND Cast(FILL_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'      
+                                             THEN FILL_DT - INTERVAL '2' HOUR   
+											 
+											  WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%' AND Cast(FILL_DT AS DATE) BETWEEN '2025-03-09' AND '2025-11-02'    
+                                             THEN FILL_DT - INTERVAL '3' HOUR 
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ALASKA%' 
+                                             THEN FILL_DT - INTERVAL '4' HOUR   
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%'  AND Cast(FILL_DT AS DATE)  BETWEEN '2021-11-07' AND '2022-03-12'   
+                                             THEN FILL_DT - INTERVAL '5' HOUR                   
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05' 
+                                             THEN FILL_DT - INTERVAL '6' HOUR   
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11' 
+                                            THEN FILL_DT - INTERVAL '5' HOUR    
+                                                
+                                            WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2023-03-12' AND '2023-11-05'  
+                                            THEN FILL_DT - INTERVAL '6' HOUR    
+                                            
+                                            WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                            THEN FILL_DT - INTERVAL '5' HOUR  
+                                             
+											 WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2024-03-11' AND '2024-11-03'   
+                                            THEN FILL_DT - INTERVAL '6' HOUR
+											
+											WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'     
+                                            THEN FILL_DT - INTERVAL '5' HOUR  
+											
+                                            WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2025-03-09' AND '2025-11-02'   
+                                            THEN FILL_DT - INTERVAL '6' HOUR  
+											
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%EASTERN%'    
+                                             THEN FILL_DT   
+                                                
+                                             ELSE NULL  
+                                        END AS FILL_DT_LC  ---- THIS FIELD NEEDS TO BE UPDATED EVERY YEAR TO REFLECT DAYLIGHT SAVINGS START AND END DATE    
+                                ,CASE   
+                                    
+                                            WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE)   BETWEEN '2021-11-07' AND '2022-03-12' 
+                                             THEN ORGNL_PRMS_TM  + INTERVAL '1' HOUR    
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2022-03-13' AND '2022-11-05'  
+                                             THEN ORGNL_PRMS_TM 
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2022-11-06' AND '2023-03-11'  
+                                             THEN ORGNL_PRMS_TM  + INTERVAL '1' HOUR    
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2023-03-12' AND '2023-11-05'  
+                                             THEN ORGNL_PRMS_TM   
+                                             
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                             THEN ORGNL_PRMS_TM  + INTERVAL '1' HOUR  
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'    
+                                             THEN ORGNL_PRMS_TM  
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2024-11-04' AND '2025-03-08' 
+                                             THEN ORGNL_PRMS_TM  + INTERVAL '1' HOUR  
+											 
+											  WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2025-03-09' AND '2025-11-02'   
+                                             THEN ORGNL_PRMS_TM  
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%CENTRAL%'    
+                                             THEN ORGNL_PRMS_TM - INTERVAL '1' HOUR     
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%MOUNTAIN%'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '2' HOUR     
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PACIFIC%'    
+                                             THEN ORGNL_PRMS_TM - INTERVAL '3' HOUR     
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '2' HOUR 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '3' HOUR   
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '2' HOUR 
+                                             
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(ORGNL_PRMS_TM AS DATE)  BETWEEN '2025-03-09' AND '2025-11-02' 
+                                             THEN ORGNL_PRMS_TM - INTERVAL '3' HOUR   
+											 
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ALASKA%' 
+                                             THEN ORGNL_PRMS_TM - INTERVAL '4' HOUR     
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(ORGNL_PRMS_TM AS DATE)  BETWEEN '2021-11-07' AND '2022-03-12'  
+                                             THEN ORGNL_PRMS_TM - INTERVAL '5' HOUR 
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2022-03-13' AND '2022-11-05'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '6' HOUR 
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2022-11-06' AND '2023-03-11'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '5' HOUR 
+                                                
+                                             WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(ORGNL_PRMS_TM as DATE) BETWEEN '2023-03-12' AND '2023-11-05'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '6' HOUR 
+                                             
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'  
+                                             THEN ORGNL_PRMS_TM - INTERVAL '5' HOUR  
+											 
+											 WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(ORGNL_PRMS_TM as DATE) BETWEEN '2024-03-11' AND '2024-11-03'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '6' HOUR
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(ORGNL_PRMS_TM AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'  
+                                             THEN ORGNL_PRMS_TM - INTERVAL '5' HOUR  
+											 
+											  WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(ORGNL_PRMS_TM as DATE) BETWEEN '2025-03-09' AND '2025-11-02'   
+                                             THEN ORGNL_PRMS_TM - INTERVAL '6' HOUR
+                            
+               
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%EASTERN%'    
+                                             THEN ORGNL_PRMS_TM 
+                                                
+                                             ELSE NULL  
+                                        END AS ORGNL_PRMS_TM_LC ---- THIS FIELD NEEDS TO BE UPDATED EVERY YEAR TO REFLECT DAYLIGHT SAVINGS START AND END DATE
+                                        ,    CASE   
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE)  BETWEEN '2021-11-07' AND '2022-03-12'   
+                                             THEN PRM_DT + INTERVAL '1' HOUR    
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05'    
+                                             THEN PRM_DT    
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11'    
+                                             THEN PRM_DT + INTERVAL '1' HOUR    
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE) BETWEEN '2023-03-12' AND '2023-11-05'    
+                                             THEN PRM_DT 
+                                             
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'    
+                                             THEN PRM_DT + INTERVAL '1' HOUR    
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'    
+                                             THEN PRM_DT 
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'   
+                                             THEN PRM_DT + INTERVAL '1' HOUR  
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%PUERTO_RICO%'  AND Cast(PRM_DT AS DATE)  BETWEEN '2025-03-09' AND '2025-11-02'     
+                                             THEN PRM_DT
+                                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%CENTRAL%'    
+                                             THEN PRM_DT - INTERVAL '1' HOUR    
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%MOUNTAIN%'   
+                                             THEN PRM_DT - INTERVAL '2' HOUR    
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%PACIFIC%'    
+                                             THEN PRM_DT - INTERVAL '3' HOUR    
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(PRM_DT AS DATE) BETWEEN '2023-11-06' AND '2024-03-10'     
+                                             THEN PRM_DT - INTERVAL '2' HOUR
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(PRM_DT AS DATE) BETWEEN '2024-03-11' AND '2024-11-03'      
+                                             THEN PRM_DT - INTERVAL '3' HOUR    
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(PRM_DT AS DATE) BETWEEN '2024-11-04' AND '2025-03-08'     
+                                             THEN PRM_DT - INTERVAL '2' HOUR
+											 
+											 WHEN Upper(ST.TM_ZONE) LIKE '%ARIZONA%'  AND Cast(PRM_DT AS DATE) BETWEEN '2025-03-09' AND '2025-11-02'        
+                                             THEN PRM_DT - INTERVAL '3' HOUR    
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%ALASKA%' 
+                                             THEN PRM_DT - INTERVAL '4' HOUR    
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%'  AND Cast(FILL_DT AS DATE)  BETWEEN '2021-11-07' AND '2022-03-12'   
+                                             THEN PRM_DT - INTERVAL '5' HOUR                
+                                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2022-03-13' AND '2022-11-05' 
+                                             THEN PRM_DT - INTERVAL '6' HOUR    
+                                    
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%HAWAII%' AND Cast(FILL_DT AS DATE) BETWEEN '2022-11-06' AND '2023-03-11' 
+                                            THEN PRM_DT - INTERVAL '5' HOUR 
+                                                
+                                            WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2023-03-12' AND '2023-11-05'  
+                                            THEN PRM_DT - INTERVAL '6' HOUR 
+                                            
+                                            WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2023-11-06' AND '2024-03-10' 
+                                            THEN PRM_DT - INTERVAL '5' HOUR 
+											
+											WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2024-03-11' AND '2024-11-03'    
+                                            THEN PRM_DT - INTERVAL '6' HOUR 
+											
+											WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE) BETWEEN '2024-11-04' AND '2025-03-08' 
+                                            THEN PRM_DT - INTERVAL '5' HOUR 
+											
+											WHEN UPPER(ST.TM_ZONE) LIKE '%HAWAII%' AND CAST(FILL_DT as DATE)  BETWEEN '2025-03-09' AND '2025-11-02' 
+                                            THEN PRM_DT - INTERVAL '6' HOUR 
+                                                
+                                             WHEN Upper(ST.TM_ZONE) LIKE '%EASTERN%'    
+                                             THEN PRM_DT    
+                                                
+                                             ELSE NULL  
+                                        END AS PRM_DT_LC  
+                                ,Cast(ORGNL_PRMS_TM_LC AS DATE) AS ORGNL_PRMS_DATE_LC   
+                                FROM IDW_RX_OPERATIONS_S_BC.SEM_FACT_WC_RX_FILL_PROCESS T1  
+                                    INNER JOIN  
+                                        (SELECT * FROM IDW_RX_OPERATIONS_S_BC.SEM_FACT_WC_RX_FILL_EMP_WF    
+                                            WHERE ACTIVITY_DATE BETWEEN Current_Date - 360 AND Current_Date 
+                                            AND ACTIVITY_ID = 4 --- PRODUCT VERIFICATION    
+                                        )T4 
+                                           ON T1.PRSCRT_FILL_ID = T4.PRSCRT_FILL_ID 
+                                    INNER JOIN IDW_COMMON.SEM_DIM_ALL_STORE ST  
+                                           ON T1.STORE_NBR = ST.STORE_NBR   
+                                          AND ST.CURR_IND = 'Y' 
+                                    LEFT JOIN IDW_RX_OPERATIONS_S_BC.SEM_FACT_SWO_PRESCRIPTION_FILL RF  
+                                           ON RF.PRSCRT_FILL_ID = T1.PRSCRT_FILL_ID 
+                                          AND RF.STORE_ID = T1.STORE_ID 
+						
+									 LEFT JOIN 
+								        (SELECT DAY_DT, DOW, FISCAL_WEEK_NBR , FISCAL_WEEK_END_DT, FISCAL_WEEK_START_DT FROM IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_DAY 
+								         WHERE CURRENT_DATE  > FISCAL_WEEK_END_DT  
+								        ) T3 ON  T1.FILL_DATE = T3.DAY_DT  	  
+																						  
+                              WHERE  FISCAL_WEEK_NBR = 202532    ----> Updat Fiscal_week_nbr here 
+                              AND RX_FILL_STATUS_CODE_ID IN (6,7,9) -- WB, SOLD, RTS    
+                              AND AREA_NBR IN (1,2,3,4,5,7,8,9,12) 
+                              ---AND  st.STORE_NBR = 139  
+)   
+WITH DATA   
+PRIMARY INDEX (PRSCRT_FILL_ID)  
+ON COMMIT PRESERVE ROWS;    
+    
+COLLECT STATISTICS ON CARRYOVER_FILLS INDEX (PRSCRT_FILL_ID);   
+COLLECT STATISTICS ON CARRYOVER_FILLS COLUMN (RXC_PTNT_ID, NDC);    
 
-    SELECT FLEX.STORE_NBR
-        ,T1_CAP
-        ,CASE WHEN ADJ.STORE_NBR IS NULL THEN T2_CAP ELSE T2_CAP + FLEX_CAP_ADJ_HRS END AS T2_CAP
-        ,T3_CAP
-        ,AVG_T1T2_CAP
-        ,SEPT
-        ,OCT
-        ,NOV
-        ,DEC
-    FROM DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP FLEX
-    LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP_ADJ_HRS ADJ
-        ON FLEX.STORE_NBR = ADJ.STORE_NBR
 
-);
+CREATE VOLATILE TABLE UPDT_PRT as (
+SELECT DISTINCT PRSCRT_FILL_ID
+FROM (
+SELECT DISTINCT CF.PRSCRT_FILL_ID
+,ACT_DESC,ACTIVITY_ID
+,CASE WHEN ACTIVITY_ID IN (8,16,23,26,44,69,106,25) THEN 'Yes' ELSE 'No' END FLAG  
+FROM CARRYOVER_FILLS AS CF
+INNER JOIN IDW_RX_OPERATIONS_S_BC.SEM_FACT_WC_RX_FILL_EMP_WF AS W
+ON CF.PRSCRT_FILL_ID = W.PRSCRT_FILL_ID
+INNER JOIN RXCOE_EWS.ACTV_ID_DESC  AS AD
+ON W.ACTIVITY_ID=AD.ACT_ID ) Temp 
+WHERE FLAG = 'Yes')
+WITH DATA   
+PRIMARY INDEX (PRSCRT_FILL_ID)  
+ON COMMIT PRESERVE ROWS;
 
-SELECT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP_ADJ
+CREATE VOLATILE TABLE FINAL_PrT AS (
+SELECT DISTINCT CF.PRSCRT_FILL_ID
+,CASE WHEN UP.PRSCRT_FILL_ID IS NOT NULL THEN CF.PRM_DT_LC ELSE ORGNL_PRMS_TM_LC  END Final_PRT
+FROM CARRYOVER_FILLS AS CF 
+LEFT JOIN Updt_PrT AS UP
+ON CF.PRSCRT_FILL_ID = UP.PRSCRT_FILL_ID)
+WITH DATA   
+PRIMARY INDEX (PRSCRT_FILL_ID)  
+ON COMMIT PRESERVE ROWS;
+---------------------------------------------------------------------------------   
+CREATE MULTISET VOLATILE TABLE CARRY_OVER_FILLS_2 AS(   
+    SELECT FILLS.*  
+        ,CASE WHEN VERIFY_DATE_LC - FILL_DATE_LC > 0 THEN 1 ELSE 0 END AS VD_FD_GTR_ZERO    
+        ,CASE WHEN VERIFY_DT_LC > CAST (Final_PRT AS DATE) THEN 1 ELSE 0 END AS VD_OPT_GT   
+        ,CASE WHEN VERIFY_DATE_LC - CAST (Final_PRT AS DATE) > 0 THEN 1 ELSE 0 END AS VD_OPT_GTR_ZERO   
+        ,CASE  WHEN VERIFY_DATE_LC - FILL_DATE_LC > 0 AND VERIFY_DT_LC > Final_PRT THEN 1 ELSE 0 END AS EST_CARRY_OVER_IND  
+        ,CASE  WHEN VD_FD_GTR_ZERO=1 AND VD_OPT_GT=1 THEN 1 ELSE 0 END AS OLD_CARRY_OVER_IND    
+        ,CASE  WHEN  VD_FD_GTR_ZERO=1 AND VD_OPT_GT=1 AND VD_OPT_GTR_ZERO=1 THEN 1 ELSE 0 END AS NEW_CARRY_OVER_IND 
+        ,rank() over(partition by FILLS.PRSCRT_FILL_ID ORDER BY VERIFY_DT_LC ASC) AS RNK    
+    FROM CARRYOVER_FILLS AS FILLS   
+    LEFT JOIN FINAL_PrT FT
+    ON FT.PRSCRT_FILL_ID = FILLS.PRSCRT_FILL_ID
+    QUALIFY RNK = 1 
+)   
+WITH DATA PRIMARY INDEX(PRSCRT_FILL_ID)     
+ON COMMIT   
+PRESERVE ROWS   
+;   
+COLLECT STATISTICS ON CARRY_OVER_FILLS_2 COLUMN (PRSCRT_FILL_ID, VD_FD_GTR_ZERO, VD_OPT_GT, VD_OPT_GTR_ZERO);   
+COLLECT STATISTICS ON CARRY_OVER_FILLS_2 COLUMN (FILL_DATE_LC,FILL_DATE);   
+    
+---DROP TABLE CARRY_OVER_FILLS_3; 
+CREATE MULTISET VOLATILE TABLE CARRY_OVER_FILLS_3 AS(   
+SELECT  
+                STORE   
+                ,DIVISION   
+                ,REGION 
+                ,DISTRICT   
+                ,t3.dow 
+                ,TM_ZONE    
+                ,FISCAL_WEEK_NBR AS FISCAL_WEEK_NBR_LCL 
+                ,FISCAL_WEEK_NBR_EST    
+                , VERIFY_DATE_LC    
+                , FILL_DATE_LC  
+                ,VERIFY_DT_LC   
+                ,ORGNL_PRMS_TM_LC   
+                ,PRM_DT_LC
+                ,PRSCRT_FILL_ID 
+                ,Count(DISTINCT CASE  WHEN VD_FD_GTR_ZERO=1 AND VD_OPT_GT=1 THEN T1.PRSCRT_FILL_ID ELSE NULL END) AS OLD_CARRY_OVER_CNT 
+                ,Count(DISTINCT CASE  WHEN  VD_FD_GTR_ZERO=1 AND VD_OPT_GT=1 AND VD_OPT_GTR_ZERO=1 THEN T1.PRSCRT_FILL_ID ELSE NULL END) AS NEW_CARRY_OVER_CNT  
+                ,Count(DISTINCT T1.PRSCRT_FILL_ID) AS TOTAL_FILLED  
+                FROM CARRY_OVER_FILLS_2 AS T1   
+                LEFT JOIN   
+                        (SELECT DAY_DT, DOW, FISCAL_WEEK_NBR , FISCAL_WEEK_END_DT, FISCAL_WEEK_START_DT FROM IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_DAY  
+                        ) T3 ON T1.FILL_DATE_LC = T3.DAY_DT 
+                LEFT JOIN   
+                        (SELECT DAY_DT, DOW, FISCAL_WEEK_NBR AS FISCAL_WEEK_NBR_EST  , FISCAL_WEEK_END_DT, FISCAL_WEEK_START_DT FROM IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_DAY    
+                        ) T4 ON T1.FILL_DATE = T4.DAY_DT    
+                GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+) WITH DATA     
+ON COMMIT   
+PRESERVE ROWS   
+;   
+COLLECT STATISTICS ON CARRY_OVER_FILLS_3 COLUMN (dow, FISCAL_WEEK_NBR_LCL);
+
+-------------------------------------------------------------------------- FW Results 
+SELECT   
+        FISCAL_WEEK_NBR_LCL,  
+		STORE AS STORE_NBR,  
+        SUM(NEW_CARRY_OVER_CNT) AS NEW_CARRY_OVER_CNT, -- New Numerator 
+        Sum(TOTAL_FILLED) AS TOTAL_FILLED              -- DENOMINATOR      
+        FROM CARRY_OVER_FILLS_3 AS FINAL_DATA      
+ 
+
+GROUP BY 1,2
+Where FISCAL_WEEK_NBR_LCL = 202532 --Update FW number
+
 
 sql code 4:
---Update workgroup based on FWT2 most up alignement today on 5/12
+SET FW_NBR = 202543;
 
---**************UPDATE WEEKS***********************************************
-    SET START_WEEK = 202530;
-    SET END_WEEK = 202533;
---**************WEEKS TO DETERMINE AVG TOTAL SHERABLE ACROSS SPECFIED TIMEFRAME*********
-
---*************************
-   SET FACTOR = 0.05; -- Factor to determine Workgroup adjustment factor
---************************
-
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.ADJ_CAP_NEWLY_VIABLE AS (
-
-    WITH AVG_WEEKLY_OI_COMP AS (
-    
-        SELECT TS.STORE_NBR
-            ,TS.OWN_WORK_DONE
-            ,TS.WORK_WE_HELP_WITH
-            ,TS.WORK_DONE_FOR_US
-            ,CASE WHEN AD.STORE_NBR IS NULL THEN TOTAL_SHAREABLE ELSE TOTAL_SHAREABLE + ADD_TS END AS TOTAL_SHAREABLE 
-            FROM
-            (
-                    SELECT CAST(STORE_NBR AS INT) AS STORE_NBR
-                        ,ROUND(AVG(OWN_WORK_DONE),0) AS OWN_WORK_DONE
-                        ,ROUND(AVG(WORK_WE_HELP_WITH),0) AS WORK_WE_HELP_WITH
-                        ,ROUND(AVG(WORK_DONE_FOR_US),0) AS WORK_DONE_FOR_US
-                        ,ROUND(AVG(OWN_WORK_DONE),0) + ROUND(AVG(WORK_DONE_FOR_US),0) AS TOTAL_SHAREABLE
-                    FROM DL_RX_OPERATION.RX_OPS_SANDBOX.OI_SUBCOMPONENTS
-                    WHERE FISCAL_WEEK_NBR BETWEEN $START_WEEK AND $END_WEEK
-                    GROUP BY 1
-                
-                    UNION
-                
-                    SELECT *
-                    FROM DL_RX_OPERATION.RX_OPS_SANDBOX.NEWLY_VIABLE_TOTAL_SHAREABLE
-            ) TS
-            LEFT JOIN  DL_RX_OPERATION.RX_OPS_SANDBOX.ADD_TOTAL_SHAREABLE_WORK AS AD
-                ON TS.STORE_NBR = AD.STORE_NBR
-
-    )
-    ,
-    
-    WG_ADJ_FACTOR AS (
+WITH H AS(
+    SELECT HOME_STORE_NBR,
+    to_Date(RECORD_CREATED_TS) AS RECORD_CREATED_TS
+    --,WORKGROUP_ID
+    ,CASE
+        WHEN WORK_TYPE_CD ='1' THEN 'DEV'
+        WHEN WORK_TYPE_CD ='2' THEN 'WAVE'
+        WHEN WORK_TYPE_CD ='3' THEN 'DEV & WAVE'
+        WHEN WORK_TYPE_CD ='4' THEN 'QT'
+        WHEN WORK_TYPE_CD ='5' THEN 'QV2'
+        ELSE NULL
+     END AS WORK_TYPE_DESCRIPTION_FULL
+    ,SUM(CASE WHEN (HOME_STORE_NBR=PROCESSING_STORE_NBR AND WORK_STATUS_CD =2) OR (WORK_STATUS_CD=3 AND DISPOSITION_TYPE_CD=17) THEN 1 ELSE 0 END) AS OWN_WORK_DONE
+    ,SUM(CASE WHEN HOME_STORE_NBR != PROCESSING_STORE_NBR AND WORK_STATUS_CD = 2 THEN 1 ELSE 0 END) AS WORK_DONE_FOR_US
+    ,SUM(CASE WHEN WORK_STATUS_CD = 1 THEN 1 ELSE 0 END) AS ASSIGNED_WORK_ITEMS
+    ,SUM(CASE WHEN WORK_STATUS_CD = 3 AND DISPOSITION_TYPE_CD <> 17 THEN 1 ELSE 0 END) AS PULL_BACK
+    ,COUNT(ID_VALUE_NBR) AS TOTAL_SHARABLE_WORK_ITEMS
         
-        SELECT FA.WORKGROUP_ID, FA.STATE
-            , SUM(T1_CAP * RATE) AS T1_EXP_NC
-            , SUM(CASE WHEN T1_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS T1_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(T1_CAP * RATE) <= $FACTOR * SUM(CASE WHEN T1_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS T1_ADJUST_FLAG
-            --, ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            CASE WHEN T1_ADJUST_FLAG = 'NO' THEN 1 ELSE (T1_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / T1_EXP_NC END, 2) AS T1_ADJ_FACTOR
+    FROM CORE_RX.CURATED_SCRIPT.AIR_SUPPORT_ASSIGNMENT
+    LEFT JOIN CORE_FSSC.CURATED_CALENDAR.DAY AS CAL
+    ON CAL.DATE_DT = to_date(RECORD_CREATED_TS)
+    WHERE WORKGROUP_ID IS NOT NULL AND FISCAL_WEEK_NBR = $FW_NBR
+    GROUP BY 1,2,3--,4
+)
+, 
+P AS (
+SELECT PROCESSING_STORE_NBR, to_date(RECORD_CREATED_TS) AS RECORD_CREATED_TS --,WORKGROUP_ID 
+    ,CASE
+        WHEN WORK_TYPE_CD ='1' THEN 'DEV'
+        WHEN WORK_TYPE_CD ='2' THEN 'WAVE'
+        WHEN WORK_TYPE_CD ='3' THEN 'DEV & WAVE'
+        WHEN WORK_TYPE_CD ='4' THEN 'QT'
+        WHEN WORK_TYPE_CD ='5' THEN 'QV2'
+        ELSE NULL
+        END AS WORK_TYPE_DESCRIPTION_FULL
+    ,SUM(CASE WHEN HOME_STORE_NBR !=PROCESSING_STORE_NBR AND WORK_STATUS_CD = 2 THEN 1 ELSE 0 END) AS WORK_WE_HELP_WITH
+FROM CORE_RX.CURATED_SCRIPT.AIR_SUPPORT_ASSIGNMENT
+LEFT JOIN CORE_FSSC.CURATED_CALENDAR.DAY AS CAL
+    ON CAL.DATE_DT = to_date(RECORD_CREATED_TS)
+    WHERE WORKGROUP_ID IS NOT NULL AND FISCAL_WEEK_NBR = $FW_NBR
+GROUP BY 1,2,3--,4
+)
 
-    
-            
-            , SUM(T2_CAP * RATE) AS T2_EXP_NC
-            , SUM(CASE WHEN T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS T2_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(T2_CAP * RATE) <= $FACTOR * SUM(CASE WHEN T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS T2_ADJUST_FLAG
-            --, ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN T2_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (T2_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / T2_EXP_NC 
-    END, 2) AS T2_ADJ_FACTOR
+SELECT 
 
-    
-            , SUM(T3_CAP * RATE) AS T3_EXP_NC
-            , SUM(CASE WHEN T3_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS T3_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(T3_CAP * RATE) <= $FACTOR * SUM(CASE WHEN T3_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS T3_ADJUST_FLAG
-            --, ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN T3_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (T3_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / T3_EXP_NC 
-      END, 2) AS T3_ADJ_FACTOR
+H.HOME_STORE_NBR, 
+CAL.FISCAL_WEEK_NBR,
+LOC.RX_AREA_NBR,
+LOC.RX_REGION_NBR, 
+LOC.RX_DISTRICT_NBR,
+SUM(H.OWN_WORK_DONE), 
+SUM(H.WORK_DONE_FOR_US), 
+SUM(P.WORK_WE_HELP_WITH)
 
-            
-            , SUM(AVG_T1T2_CAP * RATE) AS AVG_T1T2_EXP_NC
-            , SUM(CASE WHEN AVG_T1T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS AVG_T1T2_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(AVG_T1T2_CAP * RATE) <= $FACTOR * SUM(CASE WHEN AVG_T1T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS AVG_T1T2_ADJUST_FLAG
-            --, ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN AVG_T1T2_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (AVG_T1T2_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / AVG_T1T2_EXP_NC 
-      END, 2) AS AVG_T1T2_ADJ_FACTOR
+FROM H 
+LEFT JOIN P
+    ON H.HOME_STORE_NBR = P.PROCESSING_STORE_NBR
+    AND H.RECORD_CREATED_TS = P.RECORD_CREATED_TS
+    AND H.WORK_TYPE_DESCRIPTION_FULL = P.WORK_TYPE_DESCRIPTION_FULL
+LEFT JOIN CORE_FSSC.CURATED_CALENDAR.DAY AS CAL
+    ON CAL.DATE_DT = H.RECORD_CREATED_TS 
+LEFT JOIN CORE_RX.CURATED_LOCATION.STORE AS LOC
+    ON H.HOME_STORE_NBR = LOC.STORE_NBR
+    
+WHERE 
 
-    
-            , SUM(SEPT * RATE) AS SEPT_EXP_NC
-            , SUM(CASE WHEN SEPT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS SEPT_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(SEPT * RATE) <= $FACTOR * SUM(CASE WHEN SEPT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS SEPT_ADJUST_FLAG
-            --,ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN SEPT_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (SEPT_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / SEPT_EXP_NC 
-    END, 2) AS SEPT_ADJ_FACTOR
+CAL.FISCAL_WEEK_NBR = $FW_NBR
+GROUP BY 1,2,3,4,5
 
-    
-            , SUM(OCT * RATE) AS OCT_EXP_NC
-            , SUM(CASE WHEN OCT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS OCT_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(OCT * RATE) <= $FACTOR * SUM(CASE WHEN OCT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS OCT_ADJUST_FLAG
-            --,ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN OCT_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (OCT_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / OCT_EXP_NC 
-    END, 2) AS OCT_ADJ_FACTOR
+sql code 5:
+--RWP New Code Minus Controls 10.7.2024-------Base Table- Select fiscal week nbr here 
+---DROP TABLE RWP_DATA
+CREATE VOLATILE TABLE RWP_DATA AS (
+SELECT  
+KH.STORE_NBR 
+,KH.RX_Division
+,KH.RX_Region 
+,KH.RX_District
+,FP.PRSCRT_FILL_ID
+,FISCAL_WEEK_NBR
+,FP.ORGNL_PRMS_TM
+,FP.VERIFY_DT
+,FP.PRM_DT
+,FP.WAITER_IND
+,FP.RX_FILL_SRC_ID
+,EXC.NDC AS IMZ
+,dea_cls_cd
+,CASE WHEN EXC.NDC IS NOT NULL THEN 'IMZ' ELSE 'NON-IMZ' END AS IMZ_Flag
+,CASE WHEN FP.WAITER_IND IN (0,1) THEN 'Waiters'
+     WHEN FP.RX_FILL_SRC_ID IN (10,11,21,4,5) THEN 'MD initiated'
+	 WHEN FP.RX_FILL_SRC_ID IN  (19,31,6,24) THEN 'Readyfill'
+	 WHEN FP.RX_FILL_SRC_ID IN  (1,2,26) THEN 'PATIENT INITIATED'
+	 ELSE 'Other' end as Fill_Source
+,CASE when dea_cls_cd IN (2,3,4,5) THEN 'Y' ELSE 'N' END AS DEA_EXCLUSION
+--,MIN(QUE_ITM_PRMS_TS) AS  ORNG_PrT
+---,MAX (QUE_ITM_PRMS_TS) AS Last_PrT, CASE WHEN EXC.NDC IS NOT NULL THEN 'IMZ' ELSE 'NON-IMZ' END AS IMZ_Flag
+FROM  IDW_RX_OPERATIONS_S_BC.SEM_FACT_WC_RX_FILL_PROCESS  AS FP 
+LEFT JOIN IDW_COMMON.SEM_DIM_ALL_FISCAL_CAL_DAY T2
+ON FP.FILL_DATE  = T2.DAY_DT
+LEFT JOIN RXCOE_SA.IER_STATIC_EXCLUSION_NDC AS EXC 
+ON EXC.NDC = FP.NDC
+LEFT JOIN idw_Common.sem_dim_all_Drug AS drug 
+on FP.NDC = DRUG.NDC 
+INNER JOIN IDW_COMMON.SEM_DIM_ALL_STORE ST 	
+ON FP.store_id = ST.store_id 
+LEFT JOIN RXCOE_EWS.KH_LOCATION AS KH 
+ON KH.STORE_NBR = ST.STORE_NBR
+WHERE FISCAL_WEEK_NBR = 202531  ---- Change Fiscal Week Here
+AND FP.RX_FILL_STATUS_CODE_ID IN (6,7,9)
+AND RX_Division IN (1,2,3,4,5,6,7,8,9,12)
+AND DEA_EXCLUSION = 'N' ) -- WB, SOLD, RTS  )
+WITH DATA PRIMARY INDEX (FISCAL_WEEK_NBR,PRSCRT_FILL_ID,STORE_NBR) ON COMMIT PRESERVE ROWS;
 
-    
-            , SUM(NOV * RATE) AS NOV_EXP_NC
-            , SUM(CASE WHEN NOV = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS NOV_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(NOV * RATE) <= $FACTOR * SUM(CASE WHEN NOV = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS NOV_ADJUST_FLAG
-            --, ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN NOV_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (NOV_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / NOV_EXP_NC 
-    END, 2) AS NOV_ADJ_FACTOR
 
-    
-            , SUM(DEC * RATE) AS DEC_EXP_NC
-            , SUM(CASE WHEN DEC = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS DEC_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(DEC * RATE) <= $FACTOR * SUM(CASE WHEN DEC = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS DEC_ADJUST_FLAG
-            ,ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN DEC_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (DEC_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / DEC_EXP_NC 
-    END, 2) AS DEC_ADJ_FACTOR
 
-        
-        FROM DL_RX_OPERATION.RX_OPS_SANDBOX.AIRSUPPORT_WORKGROUPS AS FA
-        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.AIRS_SHARING_RATE AS SR
-            ON FA.WORKGROUP_ID= SR.WORKGROUP_ID
-        LEFT JOIN AVG_WEEKLY_OI_COMP AS OI
-            ON FA.STORE_NBR = OI.STORE_NBR
-        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP_ADJ CAP
-            ON FA.STORE_NBR = CAP.STORE_NBR
-        GROUP BY 1,2
-    )
-    
-    -----------------------------------------------------------------------
-    
-    SELECT CAP.STORE_NBR
-        ,CASE
-            WHEN (T1_ADJ_FACTOR IS NULL OR T1_ADJ_FACTOR = 1)  THEN T1_CAP
-            WHEN T1_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(T1_CAP * T1_ADJ_FACTOR AS FLOAT),2))
-         END AS T1_CAP
-    
-        ,CASE
-            WHEN (T2_ADJ_FACTOR IS NULL OR T2_ADJ_FACTOR = 1) THEN T2_CAP
-            WHEN T2_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(T2_CAP * T2_ADJ_FACTOR AS FLOAT),2))
-         END AS T2_CAP
-    
-        ,CASE
-            WHEN (T3_ADJ_FACTOR IS NULL OR T3_ADJ_FACTOR = 1) THEN T3_CAP
-            WHEN T3_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(T3_CAP * T3_ADJ_FACTOR AS FLOAT),2))
-         END AS T3_CAP
-    
-        ,CASE
-            WHEN (AVG_T1T2_ADJ_FACTOR IS NULL OR AVG_T1T2_ADJ_FACTOR = 1) THEN AVG_T1T2_CAP
-            WHEN AVG_T1T2_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(AVG_T1T2_CAP * AVG_T1T2_ADJ_FACTOR AS FLOAT),2))
-         END AS AVG_T1T2_CAP
-    
-        ,CASE
-            WHEN (SEPT_ADJ_FACTOR IS NULL OR SEPT_ADJ_FACTOR = 1) THEN SEPT
-            WHEN SEPT_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(SEPT * SEPT_ADJ_FACTOR AS FLOAT),2))
-         END AS SEPT
-    
-        ,CASE
-            WHEN (OCT_ADJ_FACTOR IS NULL OR OCT_ADJ_FACTOR = 1) THEN OCT
-            WHEN OCT_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(OCT * OCT_ADJ_FACTOR AS FLOAT),2))
-         END AS OCT
-    
-        ,CASE
-            WHEN (NOV_ADJ_FACTOR IS NULL OR NOV_ADJ_FACTOR = 1) THEN NOV
-            WHEN NOV_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(NOV * NOV_ADJ_FACTOR AS FLOAT),2))
-         END AS NOV
-    
-        ,CASE
-            WHEN (DEC_ADJ_FACTOR IS NULL OR DEC_ADJ_FACTOR = 1) THEN DEC
-            WHEN DEC_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(DEC * DEC_ADJ_FACTOR AS FLOAT),2))
-         END AS DEC
-    FROM DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP_ADJ CAP
-    LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.AIRSUPPORT_WORKGROUPS FT
-        ON CAP.STORE_NBR = FT.STORE_NBR
-    LEFT JOIN WG_ADJ_FACTOR WG
-        ON FT.WORKGROUP_ID = WG.WORKGROUP_ID
-);
+------------------------------------------------------------------ Identifying scripts that meets the exit criteria 
+--DROP TABLE Updt_PrT
+CREATE VOLATILE TABLE Updt_PrT AS (
+SELECT* FROM 
+(SELECT DISTINCT PRSCRT_FILL_ID
+,ACT_DESC
+,ACTIVITY_DT
+---,FILL_DT_LC
+,ROW_NUMBER() OVER (PARTITION BY PRSCRT_FILL_ID ORDER BY ACTIVITY_DT DESC) AS "VQ_RANK"     
+FROM (
+SELECT DISTINCT CF.PRSCRT_FILL_ID,ACT_DESC,ACTIVITY_ID,ACTIVITY_DT, CASE WHEN ACTIVITY_ID IN (8,16,23,26,44,69,106,25) THEN 'Yes' ELSE 'No' END FLAG  
+FROM RWP_DATA AS CF
+INNER JOIN IDW_RX_OPERATIONS_S_BC.SEM_FACT_WC_RX_FILL_EMP_WF AS W
+ON CF.PRSCRT_FILL_ID = W.PRSCRT_FILL_ID
+INNER JOIN RXCOE_EWS.ACTV_ID_DESC  AS AD
+ON W.ACTIVITY_ID = AD.ACT_ID ) Temp 
+WHERE FLAG = 'Yes' )TEMP2
+WHERE VQ_RANK = 1
+--where PRSCRT_FILL_ID = 930096838
+
+ )
+WITH DATA   
+PRIMARY INDEX (PRSCRT_FILL_ID)  
+ON COMMIT PRESERVE ROWS;
+
+--------------------------------------------------------------------- Creating the final promise time column to use in the RWP calculation
+CREATE VOLATILE TABLE FINAL_PrT AS (
+SELECT 
+DISTINCT RP.PRSCRT_FILL_ID
+,CASE WHEN UP.PRSCRT_FILL_ID IS NOT NULL THEN PRM_DT ELSE ORGNL_PRMS_TM  END Final_PRT
+FROM RWP_DATA AS RP 
+LEFT JOIN Updt_PrT AS UP
+ON RP.PRSCRT_FILL_ID = UP.PRSCRT_FILL_ID
+)
+WITH DATA   
+PRIMARY INDEX (PRSCRT_FILL_ID)  
+ON COMMIT PRESERVE ROWS;
+
+-------------------------------------------------------------------- RWP Calculation logic 
+CREATE VOLATILE TABLE RWP_CALC AS (
+SELECT 
+ FISCAL_WEEK_NBR
+,CAST(RP.STORE_NBR AS INT) 	AS STORE_NBR 
+,RX_Division
+,RX_Region 
+,RX_District
+,SUM(CASE WHEN VERIFY_DT <= Final_PRT  THEN 1 ELSE 0 END) RWP_NUM 
+,COUNT(DISTINCT (RP.PRSCRT_FILL_ID)) AS RWP_DEN
+FROM RWP_DATA AS RP
+LEFT JOIN FINAL_PrT AS FT
+ON FT.PRSCRT_FILL_ID = RP.PRSCRT_FILL_ID 
+GROUP BY 1,2,3,4,5) 
+WITH DATA   
+PRIMARY INDEX (STORE_NBR)  ON COMMIT PRESERVE ROWS;
+
+
+
+SELECT FISCAL_WEEK_NBR
+,STORE_NBR
+,SUM(RWP_NUM) AS RWP_NUM
+,SUM(RWP_DEN) AS RWP_DEN
+FROM RWP_CALC
+GROUP BY 1,2;
+
+/*
+drop table RXCOE_EWS.RWP_DEA_EXC
+CREATE TABLE RXCOE_EWS.RWP_DEA_EXC AS (
+SELECT *
+FROM RWP_CALC ) 
+WITH DATA PRIMARY INDEX ( STORE_NBR)  
 
 
 SELECT * 
-FROM DL_RX_OPERATION.RX_OPS_SANDBOX.ADJ_CAP_NEWLY_VIABLE
-
-sql code 5:
---Update workgroup based on FWT2 most up alignement today on 5/12
-
---**************UPDATE WEEKS***********************************************
-    SET START_WEEK = 202531;
-    SET END_WEEK = 202534;
---**************WEEKS TO DETERMINE AVG TOTAL SHERABLE ACROSS SPECFIED TIMEFRAME*********
-
---*************************
-   SET FACTOR = 0.05; -- Factor to determine Workgroup adjustment factor
---************************
-
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.ADJ_CAP_NEWLY_VIABLE_DETAILS AS (
-
-    WITH AVG_WEEKLY_OI_COMP AS (
-        
-        SELECT TS.STORE_NBR
-        ,TS.OWN_WORK_DONE
-        ,TS.WORK_WE_HELP_WITH
-        ,TS.WORK_DONE_FOR_US
-        ,CASE WHEN AD.STORE_NBR IS NULL THEN TOTAL_SHAREABLE ELSE TOTAL_SHAREABLE + ADD_TS END AS TOTAL_SHAREABLE 
-        FROM
-        (
-                SELECT CAST(STORE_NBR AS INT) AS STORE_NBR
-                    ,ROUND(AVG(OWN_WORK_DONE),0) AS OWN_WORK_DONE
-                    ,ROUND(AVG(WORK_WE_HELP_WITH),0) AS WORK_WE_HELP_WITH
-                    ,ROUND(AVG(WORK_DONE_FOR_US),0) AS WORK_DONE_FOR_US
-                    ,ROUND(AVG(OWN_WORK_DONE),0) + ROUND(AVG(WORK_DONE_FOR_US),0) AS TOTAL_SHAREABLE
-                FROM DL_RX_OPERATION.RX_OPS_SANDBOX.OI_SUBCOMPONENTS
-                WHERE FISCAL_WEEK_NBR BETWEEN $START_WEEK AND $END_WEEK
-                GROUP BY 1
-            
-                UNION
-            
-                SELECT *
-                FROM DL_RX_OPERATION.RX_OPS_SANDBOX.NEWLY_VIABLE_TOTAL_SHAREABLE
-        ) TS
-        LEFT JOIN  DL_RX_OPERATION.RX_OPS_SANDBOX.ADD_TOTAL_SHAREABLE_WORK AS AD
-            ON TS.STORE_NBR = AD.STORE_NBR
-
-    )
-    ,
-    
-    WG_ADJ_FACTOR AS (
-        
-        SELECT FA.WORKGROUP_ID, FA.STATE
-            , SUM(T1_CAP * RATE) AS T1_EXP_NC
-            , SUM(CASE WHEN T1_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS T1_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(T1_CAP * RATE) <= $FACTOR * SUM(CASE WHEN T1_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS T1_ADJUST_FLAG
-            , ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN T1_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (T1_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / T1_EXP_NC 
-     END, 2) AS T1_ADJ_FACTOR
-
-    
-            
-            , SUM(T2_CAP * RATE) AS T2_EXP_NC
-            , SUM(CASE WHEN T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS T2_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(T2_CAP * RATE) <= $FACTOR * SUM(CASE WHEN T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS T2_ADJUST_FLAG
-            , ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN T2_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (T2_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / T2_EXP_NC 
-    END, 2) AS T2_ADJ_FACTOR
-
-    
-            , SUM(T3_CAP * RATE) AS T3_EXP_NC
-            , SUM(CASE WHEN T3_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS T3_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(T3_CAP * RATE) <= $FACTOR * SUM(CASE WHEN T3_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS T3_ADJUST_FLAG
-            , ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN T3_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (T3_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / T3_EXP_NC 
-      END, 2) AS T3_ADJ_FACTOR
-
-            
-            , SUM(AVG_T1T2_CAP * RATE) AS AVG_T1T2_EXP_NC
-            , SUM(CASE WHEN AVG_T1T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS AVG_T1T2_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(AVG_T1T2_CAP * RATE) <= $FACTOR * SUM(CASE WHEN AVG_T1T2_CAP = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS AVG_T1T2_ADJUST_FLAG
-            , ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN AVG_T1T2_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (AVG_T1T2_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / AVG_T1T2_EXP_NC 
-      END, 2) AS AVG_T1T2_ADJ_FACTOR
-
-    
-            , SUM(SEPT * RATE) AS SEPT_EXP_NC
-            , SUM(CASE WHEN SEPT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS SEPT_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(SEPT * RATE) <= $FACTOR * SUM(CASE WHEN SEPT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS SEPT_ADJUST_FLAG
-            ,ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN SEPT_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (SEPT_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / SEPT_EXP_NC 
-    END, 2) AS SEPT_ADJ_FACTOR
-
-    
-            , SUM(OCT * RATE) AS OCT_EXP_NC
-            , SUM(CASE WHEN OCT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS OCT_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(OCT * RATE) <= $FACTOR * SUM(CASE WHEN OCT = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS OCT_ADJUST_FLAG
-            ,ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN OCT_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (OCT_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / OCT_EXP_NC 
-    END, 2) AS OCT_ADJ_FACTOR
-
-    
-            , SUM(NOV * RATE) AS NOV_EXP_NC
-            , SUM(CASE WHEN NOV = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS NOV_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(NOV * RATE) <= $FACTOR * SUM(CASE WHEN NOV = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS NOV_ADJUST_FLAG
-            , ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN NOV_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (NOV_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / NOV_EXP_NC 
-    END, 2) AS NOV_ADJ_FACTOR
-
-    
-            , SUM(DEC * RATE) AS DEC_EXP_NC
-            , SUM(CASE WHEN DEC = 0 THEN TOTAL_SHAREABLE ELSE 0 END) AS DEC_TOTAL_SHAREABLE_NO_CAP_STR
-            , CASE WHEN SUM(DEC * RATE) <= $FACTOR * SUM(CASE WHEN DEC = 0 THEN TOTAL_SHAREABLE ELSE 0 END) THEN 'NO' ELSE 'YES' END AS DEC_ADJUST_FLAG
-            ,ROUND(CASE WHEN FA.STATE IN ('CA', 'NH', 'NJ', 'NY', 'PA') THEN 1 
-            WHEN DEC_ADJUST_FLAG = 'NO' THEN 1 
-            ELSE (DEC_TOTAL_SHAREABLE_NO_CAP_STR * $FACTOR) / DEC_EXP_NC 
-    END, 2) AS DEC_ADJ_FACTOR
-
-        
-        FROM DL_RX_OPERATION.RX_OPS_SANDBOX.AIRSUPPORT_WORKGROUPS AS FA
-        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.AIRS_SHARING_RATE AS SR
-            ON FA.WORKGROUP_ID= SR.WORKGROUP_ID
-        LEFT JOIN AVG_WEEKLY_OI_COMP AS OI
-            ON FA.STORE_NBR = OI.STORE_NBR
-        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP_ADJ CAP
-            ON FA.STORE_NBR = CAP.STORE_NBR
-        GROUP BY 1,2
-)
-
-    
-    SELECT CAP.STORE_NBR
-        ,T1_CAP
-        ,T2_CAP
-        ,T3_CAP
-        ,AVG_T1T2_CAP
-        ,SEPT
-        ,OCT
-        ,NOV
-        ,DEC
-        ,WG.WORKGROUP_ID
-        ,FT.STATE
-        ,STATUS
-        ,T1_EXP_NC
-        ,T1_TOTAL_SHAREABLE_NO_CAP_STR
-        ,T1_ADJUST_FLAG
-        ,T1_ADJ_FACTOR
-        ,T2_EXP_NC
-        ,T2_TOTAL_SHAREABLE_NO_CAP_STR
-        ,T2_ADJUST_FLAG
-        ,T2_ADJ_FACTOR
-        ,T3_EXP_NC
-        ,T3_TOTAL_SHAREABLE_NO_CAP_STR
-        ,T3_ADJUST_FLAG
-        ,T3_ADJ_FACTOR
-        ,AVG_T1T2_EXP_NC
-        ,AVG_T1T2_TOTAL_SHAREABLE_NO_CAP_STR
-        ,AVG_T1T2_ADJUST_FLAG
-        ,AVG_T1T2_ADJ_FACTOR
-        ,SEPT_EXP_NC
-        ,SEPT_TOTAL_SHAREABLE_NO_CAP_STR
-        ,SEPT_ADJUST_FLAG
-        ,SEPT_ADJ_FACTOR
-        ,OCT_EXP_NC	OCT_TOTAL_SHAREABLE_NO_CAP_STR
-        ,OCT_ADJUST_FLAG
-        ,OCT_ADJ_FACTOR
-        ,NOV_EXP_NC
-        ,NOV_TOTAL_SHAREABLE_NO_CAP_STR
-        ,NOV_ADJUST_FLAG
-        ,NOV_ADJ_FACTOR
-        ,DEC_EXP_NC	
-        ,DEC_TOTAL_SHAREABLE_NO_CAP_STR
-        ,DEC_ADJUST_FLAG	
-        ,DEC_ADJ_FACTOR
-        ,CASE
-            WHEN (T1_ADJ_FACTOR IS NULL OR T1_ADJ_FACTOR = 1)  THEN T1_CAP
-            WHEN T1_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(T1_CAP * T1_ADJ_FACTOR AS FLOAT),2))
-         END AS T1_CAP_ADJ
-    
-        ,CASE
-            WHEN (T2_ADJ_FACTOR IS NULL OR T2_ADJ_FACTOR = 1) THEN T2_CAP
-            WHEN T2_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(T2_CAP * T2_ADJ_FACTOR AS FLOAT),2))
-         END AS T2_CAP_ADJ
-    
-        ,CASE
-            WHEN (T3_ADJ_FACTOR IS NULL OR T3_ADJ_FACTOR = 1) THEN T3_CAP
-            WHEN T3_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(T3_CAP * T3_ADJ_FACTOR AS FLOAT),2))
-         END AS T3_CAP_ADJ
-    
-        ,CASE
-            WHEN (AVG_T1T2_ADJ_FACTOR IS NULL OR AVG_T1T2_ADJ_FACTOR = 1) THEN AVG_T1T2_CAP
-            WHEN AVG_T1T2_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(AVG_T1T2_CAP * AVG_T1T2_ADJ_FACTOR AS FLOAT),2))
-         END AS AVG_T1T2_CAP_ADJ
-    
-        ,CASE
-            WHEN (SEPT_ADJ_FACTOR IS NULL OR SEPT_ADJ_FACTOR = 1) THEN SEPT
-            WHEN SEPT_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(SEPT * SEPT_ADJ_FACTOR AS FLOAT),2))
-         END AS SEPT_ADJ
-    
-        ,CASE
-            WHEN (OCT_ADJ_FACTOR IS NULL OR OCT_ADJ_FACTOR = 1) THEN OCT
-            WHEN OCT_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(OCT * OCT_ADJ_FACTOR AS FLOAT),2))
-         END AS OCT_ADJ
-    
-        ,CASE
-            WHEN (NOV_ADJ_FACTOR IS NULL OR NOV_ADJ_FACTOR = 1) THEN NOV
-            WHEN NOV_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(NOV * NOV_ADJ_FACTOR AS FLOAT),2))
-         END AS NOV_ADJ
-    
-        ,CASE
-            WHEN (DEC_ADJ_FACTOR IS NULL OR DEC_ADJ_FACTOR = 1) THEN DEC
-            WHEN DEC_ADJ_FACTOR < 1 THEN CEIL(ROUND(CAST(DEC * DEC_ADJ_FACTOR AS FLOAT),2))
-         END AS DEC_ADJ
-    FROM DL_RX_OPERATION.RX_OPS_SANDBOX.FLEX_CAP_ADJ CAP
-    LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.AIRSUPPORT_WORKGROUPS FT
-        ON CAP.STORE_NBR = FT.STORE_NBR
-    LEFT JOIN WG_ADJ_FACTOR WG
-        ON FT.WORKGROUP_ID = WG.WORKGROUP_ID
-
-);
-
-
-
-
-SELECT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.ADJ_CAP_NEWLY_VIABLE_DETAILS
+FROM RXCOE_EWS.RWP_DEA_EXC*/
