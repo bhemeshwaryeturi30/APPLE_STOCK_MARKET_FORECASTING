@@ -1,43 +1,40 @@
-
-ALTER TASK DL_RX_OPERATION.RX_OPS_SANDBOX.Refresh_OTP_2 RESUME;
-
-CREATE OR REPLACE TASK DL_RX_OPERATION.RX_OPS_SANDBOX.Refresh_OTP_2
+CREATE OR REPLACE TASK DL_RX_OPERATION.RX_OPS_SANDBOX.REFRESH_RX_PNP
 WAREHOUSE = WH_RX_QUERY_RXANALYTICS_01
-SCHEDULE = 'USING CRON 0 8 * * 2 America/New_York'
-AS CALL DL_RX_OPERATION.RX_OPS_SANDBOX.LOAD_OTP_DATA_PROC_2();
+SCHEDULE = 'USING CRON 0 7 * * 1-5 America/New_York'
+AS CALL DL_RX_OPERATION.RX_OPS_SANDBOX.LOAD_RX_PNP_DATA_PROC();
 
-CREATE OR REPLACE PROCEDURE DL_RX_OPERATION.RX_OPS_SANDBOX.LOAD_OTP_DATA_PROC_2()
+ALTER TASK DL_RX_OPERATION.RX_OPS_SANDBOX.REFRESH_RX_PNP resume;
+
+CREATE OR REPLACE PROCEDURE DL_RX_OPERATION.RX_OPS_SANDBOX.LOAD_RX_PNP_DATA_PROC()
 RETURNS STRING
 LANGUAGE SQL
 EXECUTE AS CALLER
 AS
 $$
 BEGIN
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.STORE_OPS_RX_ROADIE_PICKUP_TIMES_2 AS
-(select 
-soh.order_no
-, max(ca.activity_time_stamp) activity_time_stamp
-from "CORE_FSSC"."CURATED_OMS"."YFS_SHIPMENT_LINE" SOL 
-left join "CORE_FSSC"."CURATED_OMS"."YFS_SHIPMENT" SOH 
-on to_char(SOL.shipment_key) = to_char(SOH.shipment_key)
-left join "CORE_FSSC"."CURATED_OMS"."YFS_CVS_SHIPMENT_EXTN" SHE
-on to_char(SOH.shipment_key) = to_char(SHE.shipment_key)
-left join "CORE_FSSC"."CURATED_OMS"."YFS_CONTAINER_ACTIVITY" CA
-on to_char(SOH.shipment_key) = to_char(CA.shipment_key)
-left join "CORE_FSSC"."CURATED_OMS"."YFS_ORDER_LINE_EXTENSION" OLE 
-on to_char(sol.order_line_key) = to_char(ole.order_line_key)
-where activity_code = 'At PickUp'
-and activity_time_stamp between current_date - 731 and current_date 
-group by 1);
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.STORE_OPS_DELIVERY_RX_PnP_2 AS (
-SELECT
-  B.RX_NBR
-, B.STORE_NBR
-, B.FILL_NBR
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.RX_Del_Order_Timestamps_prep AS (
+SELECT 
+B.RX_NBR 
+, B.STORE_NBR 
+, B.FILL_NBR 
 , A.OMS_ORDER_NBR
 , delivery_sla_cd
-, courier_nm
+,CASE
+WHEN LEFT(A.OMS_ORDER_NBR,2) IN ('15') THEN 'DIGITAL ENTRY'
+WHEN LEFT(A.OMS_ORDER_NBR,1) IN ('7') THEN 'DIGITAL ENTRY'
+WHEN LEFT(A.OMS_ORDER_NBR,1) IN ('8') THEN 'DIGITAL ENTRY' --'RXD CNC EXP'
+WHEN LEFT(A.OMS_ORDER_NBR,1) IN ('9') THEN 'COLLEAGUE INITIATED'
+ELSE 'UNSURE' END AS order_entry_point
+,CASE
+WHEN delivery_fee_override_reason_cd = '1' THEN 'DELIVERY FAILURE'
+WHEN delivery_fee_override_reason_cd = '2' THEN 'OUT OF STOCK'
+WHEN delivery_fee_override_reason_cd = '3' THEN 'REQUESTED BY CAREMARK'
+WHEN delivery_fee_override_reason_cd = '4' THEN 'OTHER'
+WHEN delivery_fee_override_reason_cd = '5' THEN 'ALT DELIVERY METHOD'
+WHEN delivery_fee_override_reason_cd = '6' THEN 'SYSTEMATIC OUT OF STOCK'
+ELSE NULL
+END AS delivery_fee_override_reason_cd
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 10 THEN C.REC_EFF_TS ELSE NULL END) AS ORDER_DATE 
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 2 THEN C.REC_EFF_TS ELSE NULL END) AS PREP_DATE
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 13 THEN C.REC_EFF_TS ELSE NULL END) AS HANDOFF_DATE
@@ -45,17 +42,18 @@ SELECT
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 8 THEN C.REC_EFF_TS ELSE NULL END) AS CANCELLED_DATE
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 14 THEN C.REC_EFF_TS ELSE NULL END) AS ATTEMPTED_DELIVERY 
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 20 THEN C.REC_EFF_TS ELSE NULL END) AS HANDOFF_FAILURE
-, MAX(CASE WHEN C.ORDER_STATUS_CD = 5  THEN C.REC_EFF_TS ELSE NULL END) AS Courier_reutrn
+, MAX(CASE WHEN C.ORDER_STATUS_CD = 5  THEN C.REC_EFF_TS ELSE NULL END) AS Courier_Return_Date_PNP
+--Orderstatus -11 ( Mark to be Cancelled ) received cancellation after prep
 FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY AS A 
 JOIN CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_ITEM AS B
 ON A.ORDER_ID = B.ORDER_ID
 AND A.STORE_NBR = B.STORE_NBR
-JOIN (SELECT 
+JOIN (
+  SELECT 
   ORDER_ID 
 , STORE_NBR 
 , ORDER_STATUS_CD 
 , REC_EFF_TS 
---HISTORY TABLE DOES NOT HAVE CURRENT RECORD IN IT
 FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_HISTORY
 UNION 
 SELECT 
@@ -63,40 +61,55 @@ SELECT
 , STORE_NBR 
 , ORDER_STATUS_CD 
 , REC_EFF_TS 
-FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY) AS C
+FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY
+) AS C
 ON A.ORDER_ID = C.ORDER_ID 
-AND A.STORE_NBR = C.STORE_NBR 
+AND A.STORE_NBR = C.STORE_NBR
 where A.REC_EFF_TS >= current_date - 365
+and c.REC_EFF_TS >= current_date - 365
 and delivery_sla_cd in ('ODD','NDD')
 GROUP BY ALL);
 
-Insert into DL_RX_OPERATION.RX_OPS_SANDBOX.STORE_OPS_DELIVERY_RX_PnP_2
-
+INSERT INTO DL_RX_OPERATION.RX_OPS_SANDBOX.RX_Del_Order_Timestamps_prep 
 SELECT 
-  B.RX_NBR
-, B.STORE_NBR
-, B.FILL_NBR
+  B.RX_NBR 
+, B.STORE_NBR 
+, B.FILL_NBR 
 , A.OMS_ORDER_NBR
 , delivery_sla_cd
-, courier_nm
-, MAX(CASE WHEN C.ORDER_STATUS_CD = 10 THEN C.REC_EFF_TS ELSE NULL END) AS ORDER_DATE
+,CASE
+WHEN LEFT(A.OMS_ORDER_NBR,2) IN ('15') THEN 'DIGITAL ENTRY'
+WHEN LEFT(A.OMS_ORDER_NBR,1) IN ('7') THEN 'DIGITAL ENTRY'
+WHEN LEFT(A.OMS_ORDER_NBR,1) IN ('8') THEN 'DIGITAL ENTRY' --'RXD CNC EXP'
+WHEN LEFT(A.OMS_ORDER_NBR,1) IN ('9') THEN 'COLLEAGUE INITIATED'
+ELSE 'UNSURE' END AS order_entry_point
+,CASE
+WHEN delivery_fee_override_reason_cd = '1' THEN 'DELIVERY FAILURE'
+WHEN delivery_fee_override_reason_cd = '2' THEN 'OUT OF STOCK'
+WHEN delivery_fee_override_reason_cd = '3' THEN 'REQUESTED BY CAREMARK'
+WHEN delivery_fee_override_reason_cd = '4' THEN 'OTHER'
+WHEN delivery_fee_override_reason_cd = '5' THEN 'ALT DELIVERY METHOD'
+WHEN delivery_fee_override_reason_cd = '6' THEN 'SYSTEMATIC OUT OF STOCK'
+ELSE NULL
+END AS delivery_fee_override_reason_cd
+, MAX(CASE WHEN C.ORDER_STATUS_CD = 10 THEN C.REC_EFF_TS ELSE NULL END) AS ORDER_DATE 
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 2 THEN C.REC_EFF_TS ELSE NULL END) AS PREP_DATE
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 13 THEN C.REC_EFF_TS ELSE NULL END) AS HANDOFF_DATE
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 4 THEN C.REC_EFF_TS ELSE NULL END) AS DELIVERED_DATE
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 8 THEN C.REC_EFF_TS ELSE NULL END) AS CANCELLED_DATE
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 14 THEN C.REC_EFF_TS ELSE NULL END) AS ATTEMPTED_DELIVERY 
 , MAX(CASE WHEN C.ORDER_STATUS_CD = 20 THEN C.REC_EFF_TS ELSE NULL END) AS HANDOFF_FAILURE
-, MAX(CASE WHEN C.ORDER_STATUS_CD = 5  THEN C.REC_EFF_TS ELSE NULL END) AS Courier_reutrn
+, MAX(CASE WHEN C.ORDER_STATUS_CD = 5  THEN C.REC_EFF_TS ELSE NULL END) AS Courier_Return_Date_PNP
 FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY AS A 
 JOIN CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_ITEM AS B
 ON A.ORDER_ID = B.ORDER_ID
 AND A.STORE_NBR = B.STORE_NBR
-JOIN (SELECT 
+JOIN (
+  SELECT 
   ORDER_ID 
 , STORE_NBR 
 , ORDER_STATUS_CD 
 , REC_EFF_TS 
---HISTORY TABLE DOES NOT HAVE CURRENT RECORD IN IT
 FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY_HISTORY
 UNION 
 SELECT 
@@ -104,128 +117,237 @@ SELECT
 , STORE_NBR 
 , ORDER_STATUS_CD 
 , REC_EFF_TS 
-FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY) AS C
+FROM CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY
+) AS C
 ON A.ORDER_ID = C.ORDER_ID 
 AND A.STORE_NBR = C.STORE_NBR 
-where A.REC_EFF_TS between current_date - 731 and current_date - 366
+where A.REC_EFF_TS between current_date - 720 and current_date - 366
+and c.REC_EFF_TS between current_date - 720 and current_date - 366
 and delivery_sla_cd in ('ODD','NDD')
 GROUP BY ALL;
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.Store_OPS_RX_DELIVERY_OTP_PREP_2 as (
-Select coalesce(a.store_nbr,b.store_nbr) as Store_nbr
-, coalesce(a.fiscal_week_nbr,b.fiscal_week_nbr) as fiscal_week_nbr
-, nvl(Hit_SLA,0) + nvl(Orders_preped_on_time,0) as Total_SLA
-, nvl(Total_Count,0) + nvl(ODD_orders,0) as Total_Orders
-, nvl(Hit_SLA,0) as NDD_SLA
-, nvl(Total_Count,0) as NDD_ORDERS
-, nvl(Orders_preped_on_time,0) as ODD_SLA
-, nvl(ODD_orders,0) as ODD_orders
-from 
-(Select
-store_nbr
-,fiscal_week_nbr
-,sum (case when t2.Prep_SLA_Met = 'Hit SLA' then 1 else 0 end) Hit_SLA
-,sum (case when t2.Prep_SLA_Met in ('Hit SLA', 'Missed Prep SLA') then 1 else 0 end) Total_Count
-from 
-(select 
- fiscal_week_nbr
-,Order_Date
-,store_nbr
-,oms_ordr_nbr
-,case 
-when hour(Order_Date) <= 14 and (cast (Prep_Date as date) - cast (Order_Date as date) > 0) and (DAY_OF_WEEK_DSC in ('MON','TUE','WED','THU','FRI')) then 'Missed Prep SLA' 
-when (Prep_Date is null) and (cast (Cancelled_Date as date) - cast (Order_Date as date) > 0) then 'Missed Prep SLA'
-when hour(Order_Date) > 14 and (cast (Prep_Date as date) - cast (Order_Date as date) > 1) and (DAY_OF_WEEK_DSC in ('MON','TUE','WED','THU','FRI')
-and store_nbr not in (226,283,354,480,561,677,827,868,991,1183,1215,1227,1334,1342,1358,1421,1839,1841,1904,1986,2039,2256,2474,2527,2712,2728,2847,2934,3653,3674,3696,3742,3966,4056,4181,4402,4652,4770,4876,5129,5400,5768,5927,5998,6037,6069,6592,7385,7517,7563,7606,7683,7725,8159,8285,8368,8521,8699,8731,8812,9603,9765,10035,10043,10169,10174,10179,10391,10472,10492,10495,10632,10685,10704,10731,10739,10808,10833,10849,10883,11004,11180,11189,11222,11234,11262,11274,11344,11345,11350,12000,16010,16024,17251,17626,17631,17672,17726,17771,18072,48225,48272,48273,48353,48364,48369,48551,48570)) then 'Missed Prep SLA' 
-when hour(Order_Date) > 14 and (cast (Prep_Date as date) - cast (Order_Date as date) > 3
-    and store_nbr in (226,283,354,480,561,677,827,868,991,1183,1215,1227,1334,1342,1358,1421,1839,1841,1904,1986,2039,2256,2474,2527,2712,2728,2847,2934,3653,3674,3696,3742,3966,4056,4181,4402,4652,4770,4876,5129,5400,5768,5927,5998,6037,6069,6592,7385,7517,7563,7606,7683,7725,8159,8285,8368,8521,8699,8731,8812,9603,9765,10035,10043,10169,10174,10179,10391,10472,10492,10495,10632,10685,10704,10731,10739,10808,10833,10849,10883,11004,11180,11189,11222,11234,11262,11274,11344,11345,11350,12000,16010,16024,17251,17626,17631,17672,17726,17771,18072,48225,48272,48273,48353,48364,48369,48551,48570)) and (DAY_OF_WEEK_DSC in ('MON','TUE','WED','THU','FRI')) then 'Missed Prep SLA' 
-when hour(Order_Date) <= 13 and (cast (Prep_Date as date) - cast (Order_Date as date) > 0) and (DAY_OF_WEEK_DSC in ('SAT')
-    and store_nbr not in (226,283,354,480,561,677,827,868,991,1183,1215,1227,1334,1342,1358,1421,1839,1841,1904,1986,2039,2256,2474,2527,2712,2728,2847,2934,3653,3674,3696,3742,3966,4056,4181,4402,4652,4770,4876,5129,5400,5768,5927,5998,6037,6069,6592,7385,7517,7563,7606,7683,7725,8159,8285,8368,8521,8699,8731,8812,9603,9765,10035,10043,10169,10174,10179,10391,10472,10492,10495,10632,10685,10704,10731,10739,10808,10833,10849,10883,11004,11180,11189,11222,11234,11262,11274,11344,11345,11350,12000,16010,16024,17251,17626,17631,17672,17726,17771,18072,48225,48272,48273,48353,48364,48369,48551,48570)) then 'Missed Prep SLA' 
-when hour(Order_Date) > 13 and (cast (Prep_Date as date) - cast (Order_Date as date) > 2) and (DAY_OF_WEEK_DSC in ('SAT')
-    and store_nbr not in (226,283,354,480,561,677,827,868,991,1183,1215,1227,1334,1342,1358,1421,1839,1841,1904,1986,2039,2256,2474,2527,2712,2728,2847,2934,3653,3674,3696,3742,3966,4056,4181,4402,4652,4770,4876,5129,5400,5768,5927,5998,6037,6069,6592,7385,7517,7563,7606,7683,7725,8159,8285,8368,8521,8699,8731,8812,9603,9765,10035,10043,10169,10174,10179,10391,10472,10492,10495,10632,10685,10704,10731,10739,10808,10833,10849,10883,11004,11180,11189,11222,11234,11262,11274,11344,11345,11350,12000,16010,16024,17251,17626,17631,17672,17726,17771,18072,48225,48272,48273,48353,48364,48369,48551,48570)) then 'Missed Prep SLA' 
-when (cast (Prep_Date as date) - cast (Order_Date as date) > 2) and (DAY_OF_WEEK_DSC in ('SAT')
-    and store_nbr in (226,283,354,480,561,677,827,868,991,1183,1215,1227,1334,1342,1358,1421,1839,1841,1904,1986,2039,2256,2474,2527,2712,2728,2847,2934,3653,3674,3696,3742,3966,4056,4181,4402,4652,4770,4876,5129,5400,5768,5927,5998,6037,6069,6592,7385,7517,7563,7606,7683,7725,8159,8285,8368,8521,8699,8731,8812,9603,9765,10035,10043,10169,10174,10179,10391,10472,10492,10495,10632,10685,10704,10731,10739,10808,10833,10849,10883,11004,11180,11189,11222,11234,11262,11274,11344,11345,11350,12000,16010,16024,17251,17626,17631,17672,17726,17771,18072,48225,48272,48273,48353,48364,48369,48551,48570)) then 'Missed Prep SLA' 
-when (cast (Prep_Date as date) - cast (Order_Date as date) > 1) and (DAY_OF_WEEK_DSC in ('SUN')) then 'Missed Prep SLA' else 'Hit SLA'
-end Prep_SLA_Met
-from
-(Select 
- store_nbr
-,oms_order_nbr as oms_ordr_nbr
-,delivery_sla_cd
-,max(Order_Date) as Order_Date
-,max(Prep_Date) as Prep_Date
-,max(Handoff_Date) as Handoff_Date
-,max(Delivered_Date) as Delivered_Date
-,max(Cancelled_Date) as Cancelled_Date
-from DL_RX_OPERATION.RX_OPS_SANDBOX.STORE_OPS_DELIVERY_RX_PnP_2 
-where store_nbr not in (10696,10697,10698,10699,10700,10701,10702,10703,10705,10706,10707,10708,10709,10711,10712,10713,10714,10715,10716,10717,10718,10719,10720,10721,10722,10723,10724,10725,10726,11087)
-and delivery_sla_cd in ('NDD')
-group by all
-) t1
-left join "CORE_FSSC"."CURATED_CALENDAR"."DAY" cal
-on to_date(Order_Date)  = cal.date_dt)t2
-group by all
-)a
+Create or replace table DL_RX_OPERATION.RX_OPS_SANDBOX.RX_Del_Order_Timestamps as (
 
-Full join
+SELECT cal.fiscal_year_nbr,cal.fiscal_month_nbr,cal.fiscal_week_nbr, t1.*, PF.rxc_patient_id, PF.NDC
+from DL_RX_OPERATION.RX_OPS_SANDBOX.RX_Del_Order_Timestamps_prep AS t1
+left join CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL AS PF
+on  t1.fill_nbr = PF.fill_nbr
+and t1.RX_NBR = PF.RX_NBR
+and t1.store_nbr = PF.store_nbr
+LEFT JOIN core_fssc.curated_calendar.day AS cal
+ON TO_DATE(t1.order_date) = cal.date_dt
 
-(Select
-store_nbr
-,fiscal_week_nbr
-,count(distinct case when Final_packed_on_time = 1 then order_no else null end) as Orders_preped_on_time
-,count(distinct order_no) as ODD_orders
-from
-(select
-oms_ordr_nbr as order_no
-, store_nbr
-, Prep_Date as CVS_prepTime
-, Order_Date
-, pickup_time
-,CASE WHEN prep_date <= DATEADD(hour, 1, Order_Date) THEN 1 ELSE 0 
-END AS packed_on_time_one
-,CASE WHEN DATEADD(hour, 1, pickup_time) >= prep_date THEN 1 ELSE 0 
-END AS packed_on_time_two
-, case when packed_on_time_one = 0 then packed_on_time_two else packed_on_time_one end as Final_packed_on_time
-from (Select 
- store_nbr
-,oms_order_nbr as oms_ordr_nbr
-,delivery_sla_cd
-,max(Order_Date) as Order_Date
-,max(Prep_Date) as Prep_Date
-,max(Handoff_Date) as Handoff_Date
-,max(Delivered_Date) as Delivered_Date
-,max(Cancelled_Date) as Cancelled_Date
-from DL_RX_OPERATION.RX_OPS_SANDBOX.STORE_OPS_DELIVERY_RX_PnP_2
-where delivery_sla_cd in ('ODD')
-and store_nbr not in (10696,10697,10698,10699,10700,10701,10702,10703,10705,10706,10707,10708,10709,10711,10712,10713,10714,10715,10716,10717,10718,10719,10720,10721,10722,10723,10724,10725,10726,11087)
---filters out orders cancelled before 1 hour
-and (cancelled_date is null or hour(cancelled_date) > hour(order_date) + 1 and to_date(cancelled_date) = to_date(order_date) or to_date(cancelled_date) > to_date(order_date))
-group by all) t1
-left join (
-
-Select 
-order_no as alt_id_1
-, activity_time_stamp as pickup_time 
-from DL_RX_OPERATION.RX_OPS_SANDBOX.STORE_OPS_RX_ROADIE_PICKUP_TIMES_2
-
-) a
-on oms_ordr_nbr = alt_id_1)a
-left join "CORE_FSSC"."CURATED_CALENDAR"."DAY" cal
-on to_date(Order_Date)  = cal.date_dt
-group by all)b
-on a.store_nbr = b.store_nbr
-and a.fiscal_week_nbr = b.fiscal_week_nbr
 );
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.Store_OPS_RX_DELIVERY_OTP_2
-AS
-SELECT STORE_NBR
-, FISCAL_WEEK_NBR
-, sum(TOTAL_SLA) as dpot_num
-, sum(TOTAL_ORDERS) as dpot_den
-FROM DL_RX_OPERATION.RX_OPS_SANDBOX.Store_OPS_RX_DELIVERY_OTP_PREP_2
-where fiscal_week_nbr not in (select max(FISCAL_WEEK_NBR) from DL_RX_OPERATION.RX_OPS_SANDBOX.Store_OPS_RX_DELIVERY_OTP_PREP_2)
-group by all;
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.Store_Ops_SLAs AS
+(Select DAY_OF_WEEK_DSC
+,case 
+when DAY_OF_WEEK_DSC = 'MON' then 1
+when DAY_OF_WEEK_DSC = 'TUE' then 2
+when DAY_OF_WEEK_DSC = 'WED' then 3
+when DAY_OF_WEEK_DSC = 'THU' then 4
+when DAY_OF_WEEK_DSC = 'FRI' then 5
+when DAY_OF_WEEK_DSC = 'SAT' then 6
+when DAY_OF_WEEK_DSC = 'SUN' then 7
+end as Day_of_week_num
+, Case when DAY_OF_WEEK_DSC in ('MON','TUE','WED','THU') then 2
+when DAY_OF_WEEK_DSC in ('FRI','SAT','SUN') then 3
+end as Before_cutoff
+, Case when DAY_OF_WEEK_DSC in ('MON','TUE','WED','SUN') then 3
+when DAY_OF_WEEK_DSC in ('FRI','SAT','THU') then 4
+end as After_cutoff
+,Case when DAY_OF_WEEK_DSC in ('MON','TUE','WED','THU','FRI') then '15'
+when DAY_OF_WEEK_DSC in ('SAT','SUN') then '14' end as CUTOFF_TIME
+from CORE_FSSC.CURATED_CALENDAR.DAY
+group by 1);
+
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.DELIVERY_RX_OMS AS (
+SELECT
+OH.order_no
+,X.XTRA_CARD_NBR
+,OL.line_type
+,L.state_cd AS state
+,ORL.shipnode_key AS STORE_NBR
+,tracking_nbr
+,CASE
+WHEN LEFT(OH.ORDER_NO,2) IN ('15') THEN 'DIGITAL ENTRY'
+WHEN LEFT(OH.ORDER_NO,1) IN ('7') THEN 'DIGITAL ENTRY'
+WHEN LEFT(OH.ORDER_NO,1) IN ('8') THEN 'DIGITAL ENTRY' --'RXD CNC EXP'
+WHEN LEFT(OH.ORDER_NO,1) IN ('9') THEN 'COLLEAGUE INITIATED'
+ELSE 'UNSURE' END AS order_entry_point
+, CASE WHEN OE.CAREPASS_MEMBER = 'Y' THEN 1 ELSE 0 END AS ECPLUS_ORDER
+, CASE WHEN CHARGE_CATEGORY = 'Shipping' THEN hc.charge end AS shipping_fee
+, TO_DATE(OH.Order_date) AS order_dt
+, OH.Order_date AS order_date
+, ORS.status_date AS delivery_date
+, g.DAY_OF_WEEK_DSC
+, Day_of_week_num
+, Before_cutoff
+, After_cutoff
+, CUTOFF_TIME
+FROM CORE_FSSC.CURATED_OMS.YFS_ORDER_LINE ol
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_ORDER_HEADER oh
+ON oh.order_header_key = ol.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_SHIPMENT S
+ON s.order_header_key = ol.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_ORDER_RELEASE orl
+ON orl.order_header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_ORDER_RELEASE_STATUS ors
+ON ors.order_header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_RX.CURATED_LOCATION.STORE L
+ON l.store_nbr::VARCHAR = orl.shipnode_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_HEADER_CHARGES hc
+ON hc.header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_CVS_ORDER_EXTENSION oe
+ON oe.order_header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY od
+ON od.oms_order_nbr = oh.order_no
+LEFT JOIN PROD_COMM_DB.CDP_APP.XTRA_CARD as X
+ON CAST(oh.CUSTOMER_REWARDS_NO AS VARCHAR(15)) = CAST(X.ENCODED_XTRA_CARD_NBR AS VARCHAR(15)) 
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_SHIPMENT_CONTAINER SC
+on S.shipment_key = SC.shipment_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_CONTAINER_ACTIVITY CA
+on SC.shipment_container_key = try_to_number(CA.shipment_container_key)
+left join (select 
+date_dt, fiscal_week_nbr, DAY_OF_WEEK_DSC 
+from CORE_FSSC.CURATED_CALENDAR.DAY
+group by all) g
+on to_date(OH.order_date) = g.date_dt
+left join DL_RX_OPERATION.RX_OPS_SANDBOX.Store_Ops_SLAs I
+on I.DAY_OF_WEEK_DSC = g.DAY_OF_WEEK_DSC
+WHERE oh.document_type = '0001'
+AND oh.order_type IN ('Mixed','RX','Rx')
+AND ol.line_type IN ('NDD','MC3ODD','ODD','RRD','ROADIE')
+AND oh.enterprise_key IN ('CVSHealth')
+AND ors.status_quantity > 0
+AND ors.status in ('3700.1000')
+AND oh.entry_type IN ('DOTM','PNP')
+AND to_date(OH.ORDER_DATE) >= current_date - 720
+GROUP BY ALL);
+
+Insert Into DL_RX_OPERATION.RX_OPS_SANDBOX.DELIVERY_RX_OMS
+SELECT
+OH.order_no
+,X.XTRA_CARD_NBR
+,OL.line_type
+,L.state_cd AS state
+,ORL.shipnode_key AS STORE_NBR
+,tracking_nbr
+,CASE
+WHEN LEFT(OH.ORDER_NO,2) IN ('15') THEN 'DIGITAL ENTRY'
+WHEN LEFT(OH.ORDER_NO,1) IN ('7') THEN 'DIGITAL ENTRY'
+WHEN LEFT(OH.ORDER_NO,1) IN ('8') THEN 'DIGITAL ENTRY' --'RXD CNC EXP'
+WHEN LEFT(OH.ORDER_NO,1) IN ('9') THEN 'COLLEAGUE INITIATED'
+ELSE 'UNSURE' END AS order_entry_point
+, CASE WHEN OE.CAREPASS_MEMBER = 'Y' THEN 1 ELSE 0 END AS ECPLUS_ORDER
+, CASE WHEN CHARGE_CATEGORY = 'Shipping' THEN hc.charge end AS shipping_fee
+, TO_DATE(OH.Order_date) AS order_dt
+, OH.Order_date AS order_date
+, ORS.status_date AS delivery_date
+, g.DAY_OF_WEEK_DSC
+, Day_of_week_num
+, Before_cutoff
+, After_cutoff
+, CUTOFF_TIME
+FROM CORE_FSSC.CURATED_OMS.YFS_ORDER_LINE ol
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_ORDER_HEADER oh
+ON oh.order_header_key = ol.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_SHIPMENT S
+ON s.order_header_key = ol.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_ORDER_RELEASE orl
+ON orl.order_header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_ORDER_RELEASE_STATUS ors
+ON ors.order_header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_RX.CURATED_LOCATION.STORE L
+ON l.store_nbr::VARCHAR = orl.shipnode_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_HEADER_CHARGES hc
+ON hc.header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_CVS_ORDER_EXTENSION oe
+ON oe.order_header_key = oh.order_header_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_ORDERS.ORDER_DELIVERY od
+ON od.oms_order_nbr = oh.order_no
+LEFT JOIN PROD_COMM_DB.CDP_APP.XTRA_CARD as X
+ON CAST(oh.CUSTOMER_REWARDS_NO AS VARCHAR(15)) = CAST(X.ENCODED_XTRA_CARD_NBR AS VARCHAR(15)) 
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_SHIPMENT_CONTAINER SC
+on S.shipment_key = SC.shipment_key
+LEFT OUTER JOIN CORE_FSSC.CURATED_OMS.YFS_CONTAINER_ACTIVITY CA
+on SC.shipment_container_key = try_to_number(CA.shipment_container_key)
+left join (select 
+date_dt, fiscal_week_nbr, DAY_OF_WEEK_DSC 
+from CORE_FSSC.CURATED_CALENDAR.DAY
+group by all) g
+on to_date(OH.order_date) = g.date_dt
+left join DL_RX_OPERATION.RX_OPS_SANDBOX.Store_Ops_SLAs I
+on I.DAY_OF_WEEK_DSC = g.DAY_OF_WEEK_DSC
+WHERE oh.document_type = '0001'
+AND oh.order_type IN ('Mixed','RX','Rx')
+AND ol.line_type IN ('RetailSDD')
+AND oh.enterprise_key IN ('CVSHealth')
+AND ors.status_quantity > 0
+AND oh.entry_type IN ('DOTM','PNP')
+AND to_date(OH.ORDER_DATE) >= current_date - 720
+GROUP BY ALL;
+
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.ALL_LEGACY_ORDERS AS (
+SELECT DISTINCT
+cd.fiscal_year_nbr
+,cd.fiscal_month_nbr
+,cd.fiscal_week_nbr
+,t1.store_nbr
+,t1.rx_nbr
+,t1.fill_nbr
+,l.rx_area_nbr AS division
+,l.rx_region_nbr AS region
+,l.rx_district_nbr AS district
+,CASE WHEN t1.store_nbr IN (
+'2671','2436','10041','2360','5772','802','2445','4014','17728','11237','2428','10407','1963'
+,'11434','11297','644','11384','2962','352','913','18064','10614','2716','11226','11408','17688'
+,'2144','2057','2427','10612','11059','2558','11355','17820','9645','2557','8968','1618','10291'
+,'2717','7019','2036','10654','2940','2411','11075','845','2939','10827','10530','10826','2168'
+,'2457','5315','9732','10619','9856','6062','3752','2737','2434','10970','10235','2700','10112'
+,'10828','11014','10933','10613','1934','7186','2435','8394','9268','2058','10298','3224'
+,'11132','551') THEN 'SDD'
+ELSE 'Legacy' END AS program
+,t1.store_state_cd AS state
+,t1.rxc_patient_id
+,t1.pos_txn_ts
+,t1.NDC
+FROM SEM_RX.COMMON_RX.SEM_PRESCRIPTION_FILL t1
+LEFT OUTER JOIN CORE_FSSC.CURATED_CALENDAR.DAY cd
+ON date(t1.pos_txn_ts) = date_dt 
+LEFT OUTER JOIN CORE_RX.CURATED_LOCATION.STORE l
+ON t1.store_nbr = l.store_nbr
+WHERE t1.promise_dt_cd = 5
+AND t1.fill_status_cd = 7
+AND t1.pos_txn_ts >= CURRENT_DATE - 720
+AND cd.fiscal_week_nbr < (SELECT fiscal_week_nbr
+FROM CORE_FSSC.CURATED_CALENDAR.DAY
+WHERE date_dt = CURRENT_DATE)
+AND t1.store_nbr IN ('02773','17811','00111','00367','00440','00551','00564','00567'
+,'00580','00583','00584','00591','00628','00637','00644','00802'
+,'00845','00866','00925','00931','00976','00990','01126','01127'
+,'01147','01277','01618','01934','01963','02036','02057','02058'
+,'02144','02168','02360','02379','02411','02427','02428','02434'
+,'02435','02436','02445','02457','02557','02558','02671','02700'
+,'02716','02717','02732','02737','02747','02849','02895','02897'
+,'02939','02940','02962','03121','03216','03224','03236','03250'
+,'03265','03285','03315','03327','03400','03443','03487','03570'
+,'03607','03610','03627','03630','03635','03672','03689','03706'
+,'03722','03737','03752','03756','03765','03919','03956','03959'
+,'03961','03964','03982','03996','04014','04041','04059','04072'
+,'04182','04249','04471','04613','05010','05115','05117','05125'
+,'05126','05133','05136','05140','05141','05147','05154','05157'
+,'05174','05197','05198','05233','05247','05466','05772','05919'
+,'05924','05966','06002','06062','06270','07019','07131','07186'
+,'07887','07894','08369','08372','08842','08968','10041','10111'
+,'10112','10131','10132','10235','10291','10298','10407','10530'
+,'10612','10613','10644','10654','10696','10697','10698','10699'
+,'10700','10701','10702','10703','10705','10706','10707','10708'
+,'10709','10711','10712','10713','10715','10716','10717','10718'
+,'10719','10720','10721','10722','10723','10724','10725','10726'
+,'10826','10827','10828','10919','10933','10970','11014','11059'
+,'11075','11087','11132','11141','11189','11226','11237','11384'
+,'11408','11434','11509','17688','17728','17820'));
 
 END;
 $$;
