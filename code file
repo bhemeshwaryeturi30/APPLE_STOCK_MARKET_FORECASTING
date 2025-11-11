@@ -1,1 +1,931 @@
+/*
+This query was updated from an Teradata query. 
+Specific questions can be directed to shane.gorth@cvshealth.com
 
+ Objective: Measuring time spent for all colleague in one store, for one day
+  A) Time spent working INSIDE of their assignment card responsibilities
+  B) Time spend working OUTSIDE of their assignment card responsibilities
+
+Structure of query:
+    1) DWSAB - Reformatting the raw DWSAB. The data contains overlapping cards that needs to be fixed in order to make sense. Cards are cleaned, overlaps are removed, and employees are aggregated to one row.
+    2) Grabs Data from:
+        a) QT
+        b) QV
+        c) QP
+        d) POS - Drive Thru and Non Drive Thru
+        e) Combine into one "Work Item View"
+    3) Combine data from DWSAB with Work Item Data to determine time spent "Inside" and "Outside" assignment card responsibilities
+    
+  */
+SET (START_DATE, END_DATE) = (
+    SELECT MIN(DATE_DT) AS START_DATE
+        , MAX(DATE_DT) AS END_DATE
+    FROM CORE_FSSC.CURATED_CALENDAR.DAY AS CAL
+    WHERE CAL.FISCAL_WEEK_NBR=202406
+);
+
+
+SELECT $START_DATE, $END_DATE;
+
+-- select max(DATE_TIME_OF_THE_NOTIFICATION)
+-- FROM APP_DEWA.DEWA_RPT.NOTIFICATIONS 
+-- -----------------------------------------------
+-- --FORMATTING DATA - CREATE BASE DATA TABLE:
+-- -----------------------------------------------
+        
+CREATE OR REPLACE TEMPORARY TABLE BASE_DWSAB_DATA AS (
+    SELECT STORE AS STORE_NBR
+        ,REPLACE(RATIO, ' ', '') AS CLEAN_RATIO
+        ,DENSE_RANK() OVER (PARTITION BY STORE_NBR ORDER BY START_TIME_OF_THE_CARD ASC, END_TIME_OF_THE_CARD ASC) AS ROW_ID__card_group
+        ,DWSAB.*   
+    FROM APP_DEWA.DEWA_RPT.NOTIFICATIONS AS DWSAB
+    WHERE  DWSAB.CHAIN <> 'CHAIN' 
+        AND START_TIME_OF_THE_CARD::DATE BETWEEN $START_DATE AND $END_DATE
+);
+
+-- select * from BASE_DWSAB_DATA limit 10
+
+CREATE OR REPLACE TEMPORARY TABLE BASE_DWSAB_DATA_W_CARD_ID_SINGLE AS (
+
+    SELECT
+         ROW_ID__CARD_GROUP AS CARD_ID
+        ,STORE_NBR
+        ,CLEAN_RATIO AS RATIO
+        ,CHAIN
+        ,STATE
+        ,AREA
+        ,REGION
+        ,DISTRICT
+        ,STORE
+        ,RATIO AS RAW_RATIO
+        ,DRIVE_THRU AS DRIVE_THRU_YN
+        ,TWENTYFOUR_HOUR_STORE AS A_24_HOUR_STORE_YN
+        ,PRIMARY_WORK_STATION_NAME
+        ,EMPLOYEE_ID
+        ,FIRST_NAME
+        ,LAST_NAME
+        ,ROLE
+        ,CASE WHEN COLLEAGUE_PUNCH_IN_INDICATOR='TRUE' THEN 'Y' ELSE 'N' END AS COLLEAGUE_PUNCH_IN_INDICATOR_YN
+        ,ACTUAL_RECOMMENDED_INDICATOR
+        ,START_TIME_OF_THE_CARD
+        ,END_TIME_OF_THE_CARD
+        ,DATE_TIME_OF_THE_NOTIFICATION
+        ,ARRAY_TO_STRING(ARRAY_AGG(ON_STATION_ACTIVITIES), ', ') AS ON_STATION_ACTIVITIES
+        ,ARRAY_TO_STRING(ARRAY_AGG(OFF_STATION_ACTIVITIES), ', ') AS OFF_STATION_ACTIVITIES
+    FROM BASE_DWSAB_DATA
+    GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22
+
+);
+
+-- select * from BASE_DWSAB_DATA_W_CARD_ID_SINGLE limit 10
+
+
+----------------------------------------------------------------------------------------
+--00 AND 05 RECORDS ONLY:
+	--> BACKGROUND: At the :00 minute mark there is an expected Ratio card. If at the 
+	--			    :05 minute mark the punch in/outs do not match this expected Card, a
+	--			    new card is generated. Thus if this scenario occurs, you need to keep
+	--				the original (:00) Start and End time but use the Ratio Card value  
+	--				from the :05 record
+----------------------------------------------------------------------------------------
+
+------------------------------
+--:00 AND :05 RECORDS ONLY
+------------------------------
+CREATE OR REPLACE TEMPORARY TABLE BASE_DWSAB_DATA_00_05_ONLY AS (
+
+    WITH BASE_DATA AS (
+        SELECT *
+        FROM BASE_DWSAB_DATA_W_CARD_ID_SINGLE
+        WHERE MINUTE(START_TIME_OF_THE_CARD) IN (0,5)
+        ),
+        
+    ROWID_GROUP_PER_SAME_ENDTIME AS (
+        SELECT DENSE_RANK() OVER (PARTITION BY STORE_NBR ORDER BY STORE_NBR, END_TIME_OF_THE_CARD ASC) AS ROW_ID__same_endtime
+              ,A.*
+        FROM BASE_DATA A
+        ),
+        
+    NEW_START_N_END_TIME_PER_SAME_ENDTIME_GROUP AS (          
+        SELECT STORE_NBR
+                ,ROW_ID__same_endtime
+              ,MIN(START_TIME_OF_THE_CARD) AS START_TIME
+              ,MAX(END_TIME_OF_THE_CARD) AS END_TIME
+        FROM ROWID_GROUP_PER_SAME_ENDTIME
+        GROUP BY STORE_NBR, ROW_ID__same_endtime
+        ),   --NOTE: CREATES NEW START AND END TIME TO ACCOUNT FOR SCENARIO WHERE AN ASSIGNMENT CARD UPDATE OCCURS AT THE :05 CHECK..
+        
+    DETERMINE_MAX_RAWDATA_CARD_GROUP_PER_SAMEENDTIME_GROUP AS (
+        SELECT STORE_NBR
+            ,ROW_ID__same_endtime
+              ,MAX(CARD_ID) AS MAX_ROW_ID__card_group
+        FROM ROWID_GROUP_PER_SAME_ENDTIME
+        GROUP BY STORE_NBR, ROW_ID__same_endtime
+        )
+        
+    SELECT DISTINCT
+           B.*
+    FROM NEW_START_N_END_TIME_PER_SAME_ENDTIME_GROUP A
+    INNER JOIN ROWID_GROUP_PER_SAME_ENDTIME B
+        ON A.ROW_ID__same_endtime = B.ROW_ID__same_endtime
+            AND A.STORE_NBR=B.STORE_NBR
+    WHERE B.CARD_ID IN (SELECT DISTINCT MAX_ROW_ID__card_group FROM DETERMINE_MAX_RAWDATA_CARD_GROUP_PER_SAMEENDTIME_GROUP)
+);
+
+-- select * from BASE_DWSAB_DATA_00_05_ONLY limit 10
+
+
+select *
+from BASE_DWSAB_DATA_W_CARD_ID_SINGLE;
+
+CREATE OR REPLACE TEMPORARY TABLE BASE_DWSAB_DATA_NON_00_05_ONLY AS (
+        SELECT DISTINCT
+               *          
+    FROM BASE_DWSAB_DATA_W_CARD_ID_SINGLE             
+    WHERE MINUTE(START_TIME_OF_THE_CARD) NOT IN (0,5)        
+);
+
+CREATE OR REPLACE TEMPORARY TABLE UNION_DWSAB_DATA_AFTER_FIX_1 AS (
+    SELECT CARD_ID
+        ,STORE_NBR
+        ,RAW_RATIO
+        ,CHAIN
+        ,STATE
+        ,AREA
+        ,REGION
+        ,DISTRICT
+        ,STORE
+        ,RATIO
+        ,DRIVE_THRU_YN
+        ,A_24_HOUR_STORE_YN
+        ,PRIMARY_WORK_STATION_NAME
+        ,EMPLOYEE_ID
+        ,FIRST_NAME
+        ,LAST_NAME
+        ,ROLE
+        ,COLLEAGUE_PUNCH_IN_INDICATOR_YN
+        ,ON_STATION_ACTIVITIES
+        ,OFF_STATION_ACTIVITIES
+        ,ACTUAL_RECOMMENDED_INDICATOR
+        ,CASE WHEN MINUTE(START_TIME_OF_THE_CARD)=5 THEN DATEADD('MINUTE',-5, START_TIME_OF_THE_CARD)
+            ELSE START_TIME_OF_THE_CARD
+            END AS START_TIME_OF_THE_CARD
+        ,END_TIME_OF_THE_CARD
+        ,DATE_TIME_OF_THE_NOTIFICATION
+    FROM BASE_DWSAB_DATA_00_05_ONLY
+
+    UNION ALL
+
+    SELECT CARD_ID
+        ,STORE_NBR
+        ,RAW_RATIO
+        ,CHAIN
+        ,STATE
+        ,AREA
+        ,REGION
+        ,DISTRICT
+        ,STORE
+        ,RATIO
+        ,DRIVE_THRU_YN
+        ,A_24_HOUR_STORE_YN
+        ,PRIMARY_WORK_STATION_NAME
+        ,EMPLOYEE_ID
+        ,FIRST_NAME
+        ,LAST_NAME
+        ,ROLE
+        ,COLLEAGUE_PUNCH_IN_INDICATOR_YN
+        ,ON_STATION_ACTIVITIES
+        ,OFF_STATION_ACTIVITIES
+        ,ACTUAL_RECOMMENDED_INDICATOR
+        ,START_TIME_OF_THE_CARD
+        ,END_TIME_OF_THE_CARD
+        ,DATE_TIME_OF_THE_NOTIFICATION
+    FROM BASE_DWSAB_DATA_NON_00_05_ONLY
+);
+
+CREATE OR REPLACE TEMPORARY TABLE UNION_DWSAB_DATA_AFTER_FIX_2 AS (
+
+    WITH BASE_DATA AS (
+        SELECT DISTINCT 
+               A.*
+               ,LEAD(START_TIME_OF_THE_CARD) OVER(PARTITION BY EMPLOYEE_ID, END_TIME_OF_THE_CARD ORDER BY START_TIME_OF_THE_CARD ASC) AS LEAD_START_TS
+        FROM UNION_DWSAB_DATA_AFTER_FIX_1 AS A
+
+        )
+        
+    SELECT DISTINCT
+           CARD_ID
+        ,STORE_NBR
+        ,RAW_RATIO
+        ,CHAIN
+        ,STATE
+        ,AREA
+        ,REGION
+        ,DISTRICT
+        ,STORE
+        ,RATIO
+        ,DRIVE_THRU_YN
+        ,A_24_HOUR_STORE_YN
+        ,PRIMARY_WORK_STATION_NAME
+        ,EMPLOYEE_ID
+        ,FIRST_NAME
+        ,LAST_NAME
+        ,ROLE
+        ,COLLEAGUE_PUNCH_IN_INDICATOR_YN
+        ,ON_STATION_ACTIVITIES
+        ,OFF_STATION_ACTIVITIES
+        ,ACTUAL_RECOMMENDED_INDICATOR
+        ,START_TIME_OF_THE_CARD
+        ,COALESCE(LEAD_START_TS, END_TIME_OF_THE_CARD) AS END_TIME_OF_THE_CARD
+        ,DATE_TIME_OF_THE_NOTIFICATION                   
+    FROM BASE_DATA A
+);
+----------------------------------------------------------------------------------------------
+--AGGREGATE ALL ONSTATION TASKS TO A SINGLE LINE SO THERE IS JUST ONE RECORD PER PERSON/CARD:
+----------------------------------------------------------------------------------------------
+
+CREATE OR REPLACE TEMPORARY TABLE DWSAB_DATA AS (
+
+SELECT A.*
+      ,DATEDIFF('second', A.START_TIME_OF_THE_CARD, A.END_TIME_OF_THE_CARD) AS TOT_TIME_OF_CARD
+      ,B.PRIMARY
+      ,B.SECONDARY_1
+      ,B.SECONDARY_2
+      ,B.SECONDARY_3
+      ,B.SECONDARY_4
+      
+      ,COALESCE(B.QT_ACTIVITY_EXPECTED,'Y') AS QT_ACTIVITY_EXPECTED
+      ,COALESCE(B.QV_ACTIVITY_EXPECTED,'Y') AS QV_ACTIVITY_EXPECTED
+      ,COALESCE(B.QP_ACTIVITY_EXPECTED,'Y') AS QP_ACTIVITY_EXPECTED 
+      ,COALESCE(B.POSDT_ACTIVITY_EXPECTED,'Y') AS POSDT_ACTIVITY_EXPECTED
+      ,COALESCE(B.POSNONDT_ACTIVITY_EXPECTED,'Y') AS POSNONDT_ACTIVITY_EXPECTED
+FROM UNION_DWSAB_DATA_AFTER_FIX_2 A
+LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.DWSAB_CARD_MASTER AS B--DL_RX_OPERATION.RX_OPS_SANDBOX.DVP_ASSIGNMENT_CARD_MASTER_W_EXPECTATIONS B 
+      ON A.RATIO = B.RATIO
+          AND UPPER(A.PRIMARY_WORK_STATION_NAME) = B.PRIMARY
+          AND A.Drive_Thru_YN = B.DRIVETHRU
+   
+   -----AND **NEED A VIRTUAL VERIFICATION FLAG ***
+   -----AND **CA VS NON-CALIFORNIA FLAG ***
+   
+);
+/******************************************************
+				TRIAGE QUEUE
+******************************************************/
+------------------------------------------
+--CREATING BASE TRIAGE QUEUE DATA:
+------------------------------------------
+
+CREATE OR REPLACE TEMPORARY TABLE QT_DATA AS (
+    --STAGE QT FILTERING ON DISPOSITION
+    --STAGE 2 QT - BRINGING IN ODB TABLE
+    --STAGE 3 QT - XREF COALESCE WITH OBD AND QT STORE_NBR, RX_NBR, FILL_NBR
+    WITH TRIAGE_DATA_STAGE1 AS (
+            SELECT DISTINCT A.tRIAGE_QUEUE_SK
+                           ,A.STORE_NBR
+                           ,A.RXC_PRESECRIPTION_FILL_ID 
+                           ,A.RX_NBR
+                           ,A.RX_FILL_NBR  
+                           ,A.TRIAGE_ITEM_TYPE_DETAIL_ID
+                           ,A.TRIAGE_ITEM_TYPE_ID    
+                           ,A.DISPOSITION_TS
+                           ,A.EMPLOYEE_ID 
+                           ,A.OUTBOUND_CONTACT_ID
+            FROM CORE_RX.CURATED_SCRIPT.TRIAGE_QUEUE AS A
+            WHERE To_date(A.DISPOSITION_TS) BETWEEN $START_DATE AND $END_DATE
+            ),
+    TRIAGE_DATA_STAGE2 AS (
+        SELECT QT_S.*
+        ,X.RXC_PRESCRIPTION_FILL_ID AS XREF_RXC_PRESCRIPTION_FILL_ID
+    	,X.STORE_NBR AS XREF_STORE_NBR
+        ,X.RX_NBR AS XREF_RX_NBR
+        ,X.FILL_NBR AS XREF_FILL_NBR
+    FROM TRIAGE_DATA_STAGE1 AS QT_S
+    LEFT JOIN CORE_RX.CURATED_OUTREACH.RXC_OUTBOUND_CONTACT AS OBD
+    	ON QT_S.OUTBOUND_CONTACT_ID = OBD.RXC_OUTBOUND_CONTACT_ID
+        AND TO_DATE(OBD.REC_EFF_TS) BETWEEN $START_DATE-1 AND $END_DATE+1
+    LEFT JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF AS X
+    	ON OBD.RXC_PRESCRIPTION_FILL_ID=X.RXC_PRESCRIPTION_FILL_ID
+    ),
+    TRIAGE_DATA AS (
+        SELECT DISTINCT QT.TRIAGE_QUEUE_SK
+                           ,QT.STORE_NBR
+                           ,COALESCE(QT.RXC_PRESECRIPTION_FILL_ID, QT.XREF_RXC_PRESCRIPTION_FILL_ID) AS RXC_PRESECRIPTION_FILL_ID
+                           ,COALESCE(QT.RX_NBR, QT.XREF_RX_NBR) AS RX_NBR
+                           ,COALESCE(QT.RX_FILL_NBR, QT.XREF_FILL_NBR) AS RX_FILL_NBR
+                           ,QT.TRIAGE_ITEM_TYPE_DETAIL_ID
+                           ,QT.TRIAGE_ITEM_TYPE_ID    
+                           ,QT.DISPOSITION_TS
+                           ,QT.EMPLOYEE_ID 
+            FROM TRIAGE_DATA_STAGE2 AS QT
+    ),
+    ACTIVITY_DATA AS (
+            SELECT DISTINCT 
+                           A.RXC_PRESCRIPTION_FILL_ID
+                           ,A.ACTIVITY_CD
+                           ,A.EFFECTIVE_TS
+                           ,A.EMPLOYEE_ID
+            FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_ACTIVITY AS A
+            INNER JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF AS X
+                ON A.RXC_PRESCRIPTION_FILL_ID=X.RXC_PRESCRIPTION_FILL_ID
+            INNER JOIN DL_DEWA.DEWA_ANALYTICS.DM_MEASURING_DWSAB_CARD_ULTILIZATION_INSCOPE_STOREDATE_TABLE AS B
+                On B.STORE_NBR = COALESCE(A.PROCESSING_STORE_NBR,X.STORE_NBR) 
+            WHERE to_date(A.EFFECTIVE_TS) BETWEEN B.START_DT AND B.END_DT                                       
+            ),           
+TRIAGE_CROSSWALK_ACTIVITY AS (   --Note: Only looking at QT records with a valid RXC_PRESECRIPTION_FILL_ID (aka. NOT -99,998)
+            SELECT A.*
+                    ,COALESCE(A.EMPLOYEE_ID, B.EMPLOYEE_ID) AS EMPLOYEE_ID_dvp
+                     ,B.ACTIVITY_CD
+                     ,B.EFFECTIVE_TS
+            FROM TRIAGE_DATA A
+            LEFT JOIN ACTIVITY_DATA B
+                ON A.RXC_PRESECRIPTION_FILL_ID = B.RXC_PRESCRIPTION_FILL_ID
+                    AND B.EFFECTIVE_TS BETWEEN DATEADD('SECOND', -5, A.DISPOSITION_TS) AND DATEADD('SECOND', 5, A.DISPOSITION_TS)
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY A.TRIAGE_QUEUE_SK ORDER BY B.EFFECTIVE_TS ASC)=1--THIS WILL DEDUPE THE ACTIVITY
+            
+          ),            
+    CROSSWALK_TO_TRIAGE_DSC AS (
+            SELECT  A.*  
+                   ,B.WC_TRIAGE_ITM_DTL_DSC 
+                   ,C.ACTIVITY_DSC
+                  ,LABOR_STANDARD.TIMING_IN_SECONDS
+            FROM TRIAGE_CROSSWALK_ACTIVITY A
+            LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.sem_dim_wc_triage_itm_dtl B            
+                ON A.TRIAGE_ITEM_TYPE_DETAIL_ID = B.WC_TRIAGE_ITM_DTL_ID
+            LEFT JOIN CORE_RX.CURATED_SCRIPT.DIM_RX_ACTIVITY AS C
+                ON A.ACTIVITY_CD = C.ACTIVITY_CD
+            LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.DWSAB_QT_LABOR_STANDARDS AS LABOR_STANDARD
+                ON A.TRIAGE_ITEM_TYPE_DETAIL_ID=LABOR_STANDARD.TRIAGE_ITEM_TYPE_DETAIL_ID
+            ),
+
+    ADD_JOB_ROLE AS (
+            SELECT A.*
+                  ,EMP.JOB_TITLE_NM
+                  ,CASE
+                        WHEN EMP.JOB_TITLE_NM IN (
+                                    'Pharmacy Lead Technician',
+                                    'Pharmacy Technician',              
+                                    'Inventory Specialist',
+                                    'Shift Supervisor RX',
+                                    'Pharmacy Intern - 5th Year',
+                                    'Pharmacy Intern - Grad',
+                                    'Pharmacy Intern - 3rd Year',
+                                    'Pharmacy Intern - 4th Year',
+                                    'Pharmacy Intern - 6th Year',
+                                    'Tech I RX Front End Spc Mail',
+                                    'Inventory Specialist', 'Shift Supervisor RX', 'Store Associate Rx', 'Operations Supervisor RX', 'Store Associate', 'Shift Supervisor', 'Store Ops Team Leader, RX', 'Inventory Specialist, FSS'
+                                    )
+                    THEN 'TECH'
+                
+                    WHEN EMP.JOB_TITLE_NM IN (
+                                    'Pharmacy Manager',
+                                    'Pharmacy Manager, DL EL',
+                                    'Staff Pharmacist Floater PT',
+                                    'Staff Pharmacist FT',
+                                    'Staff Pharmacist Floater FT',
+                                    'Rx Mgr Emerging Leader',
+                                    'Staff Pharmacist PT',
+                                    'Night Pharmacist FT',
+                                    'Staff Pharmacist Floater PT', 'Staff Pharmacist Floater FT', 'CA Staff Pharmacist Floater PT', 'CA Staff Pharmacist Floater FT', 'CA Staff RPh Floater, Night FT', 'Staff Pharmacist FT', 'Staff Pharmacist PT', 'CA Staff Pharmacist FT', 'CA Staff Pharmacist PT', 'Pharmacy Manager', 'CA Pharmacy Manager', 'Temporary PIC', 'PIC/Team Leader FT', 'RPh Advisor', 'Mgr,Rx Customer Care RPh', 'Distr Support Pharmacy Ldr CA', 'Rx Call Center PIC', 'Dist Supprt RPh CA Union Nt FT'
+                                    )
+                    THEN 'RPH'
+                    WHEN Upper(EMP.JOB_TITLE_NM) LIKE '%PHARMACIST%' OR Upper(EMP.JOB_TITLE_NM) LIKE '%MANAGER%' OR Upper(EMP.JOB_TITLE_NM) LIKE '%RX MGR%'
+                    THEN 'RPH'
+                    WHEN Upper(EMP.JOB_TITLE_NM) LIKE '%TECH%' OR Upper(EMP.JOB_TITLE_NM) LIKE '%INTERN%'
+                    THEN 'TECH'
+                    WHEN EMP.JOB_TITLE_NM IS NULL
+                    THEN NULL
+                
+            ELSE 'MISC'
+                END AS JOB_ROLE   
+                            
+            FROM CROSSWALK_TO_TRIAGE_DSC AS A
+            LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.EMPLOYEE AS EMP     
+                ON A.EMPLOYEE_ID = EMP.EMPLOYEE_ID          
+            ),
+
+   
+            
+    CONVERT_TO_LOCAL_TIME AS (
+            SELECT A.*
+                ,CASE 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ATLANTIC%' THEN A.DISPOSITION_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%EASTERN%' THEN A.DISPOSITION_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%CENTRAL%' THEN DATEADD('HOUR',-1, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%MOUNTAIN%' THEN DATEADD('HOUR',-2, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%AZ%' THEN DATEADD('HOUR',-3, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%PACIFIC%' THEN DATEADD('HOUR',-3, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ALASKA%' THEN DATEADD('HOUR',-5, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%HAWAII%' THEN DATEADD('HOUR',-6, A.DISPOSITION_TS )
+    			 END AS DISPOSITION_TS__local_time  
+            FROM ADD_JOB_ROLE A
+            LEFT JOIN CORE_RX.CURATED_LOCATION.STORE STR
+                ON A.STORE_NBR = STR.STORE_NBR
+            )
+    SELECT *
+    FROM CONVERT_TO_LOCAL_TIME
+    WHERE JOB_ROLE IN ( 'RPH', 'TECH' ) 
+    
+    ); 
+    
+/******************************************************
+				VERIFICATION QUEUE
+                --Note - Shane Gorth - This will not work for air support. We will have to use the Air Support Assignment Table for PROCESSING STORE_NBR
+******************************************************/
+CREATE OR REPLACE TEMPORARY TABLE QV_DATA AS (
+
+    WITH BASE_QV_DATA AS (
+        SELECT A.*
+        FROM CORE_RX.CURATED_SCRIPT.RXC_VERIFICATION_QUEUE A
+        WHERE to_date(A.DISPOSITION_TS) BETWEEN $START_DATE AND $END_DATE
+          AND QV_DISPOSITION_CD NOT IN (71, 72) --Dummy dispositions for Air Support Sharing
+    ),
+
+    QV_DATA AS (
+        SELECT DISTINCT
+               B.STORE_NBR
+               ,A.ID_VALUE
+              ,A.RX_NBR
+              ,A.FILL_NBR
+                ,A.QV_STATUS_CD 
+                ,A.QV_DISPOSITION_CD
+              ,A.VERIFICATION_START_TS
+              ,A.DISPOSITION_TS
+              ,C.EMPLOYEE_ID           
+              ,C.ACTIVITY_CD 
+              ,ACTV_CD.ACTIVITY_DSC
+              ,QV_ITM_STS_CD.PARM3_VAL AS QUE_ITM_STUS_DSC
+              
+        --FROM IDW_RX_OPERATIONS_S_BC.SEM_FACT_VERIFICATION_QUEUE A
+        FROM BASE_QV_DATA A
+        LEFT JOIN CORE_RX.CURATED_LOCATION.STORE B
+            ON A.STORE_NBR = B.STORE_NBR  
+            
+        LEFT JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_ACTIVITY C
+            ON A.ID_VALUE=C.RXC_PRESCRIPTION_FILL_ID
+               -- AND A.RXC_VERIFICATION_QUEUE_SK = C.RXC_PRESCRIPTION_FILL_ID   --UPDATE 3/14/21
+                AND A.DISPOSITION_TS BETWEEN DATEADD(SECOND, -2, C.EFFECTIVE_TS) AND DATEADD(SECOND, 2, C.EFFECTIVE_TS)
+                AND (C.USER_TYPE_CD IS NULL OR C.USER_TYPE_CD NOT IN ('SSYST', 'SYS', 'N/A'))
+        LEFT JOIN CORE_RX.CURATED_SCRIPT.DIM_RX_ACTIVITY ACTV_CD
+            ON C.ACTIVITY_CD = ACTV_CD.ACTIVITY_CD
+        LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.RX_PARAMETER AS QV_ITM_STS_CD 
+            ON A.QV_STATUS_CD  = QV_ITM_STS_CD.PARM1_VAL
+                AND QV_ITM_STS_CD.PARM_DSC = 'QV Item Status Code'
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY A.ID_VALUE, A.DISPOSITION_TS ORDER BY C.EFFECTIVE_TS ASC) = 1
+        ),
+
+    CROSSWALK_EMPID AS (
+        SELECT A.*
+              ,B.JOB_TITLE_NM
+              ,CASE
+                    WHEN B.JOB_TITLE_NM IN (
+                                    'Pharmacy Lead Technician',
+                                    'Pharmacy Technician',              
+                                    'Inventory Specialist',
+                                    'Shift Supervisor RX',
+                                    'Pharmacy Intern - 5th Year',
+                                    'Pharmacy Intern - Grad',
+                                    'Pharmacy Intern - 3rd Year',
+                                    'Pharmacy Intern - 4th Year',
+                                    'Pharmacy Intern - 6th Year',
+                                    'Tech I RX Front End Spc Mail',
+                                    'Inventory Specialist', 'Shift Supervisor RX', 'Store Associate Rx', 'Operations Supervisor RX', 'Store Associate', 'Shift Supervisor', 'Store Ops Team Leader, RX', 'Inventory Specialist, FSS'
+                                    )
+                    THEN 'TECH'
+                
+                    WHEN B.JOB_TITLE_NM IN (
+                                    'Pharmacy Manager',
+                                    'Pharmacy Manager, DL EL',
+                                    'Staff Pharmacist Floater PT',
+                                    'Staff Pharmacist FT',
+                                    'Staff Pharmacist Floater FT',
+                                    'Rx Mgr Emerging Leader',
+                                    'Staff Pharmacist PT',
+                                    'Night Pharmacist FT',
+                                    'Staff Pharmacist Floater PT', 'Staff Pharmacist Floater FT', 'CA Staff Pharmacist Floater PT', 'CA Staff Pharmacist Floater FT', 'CA Staff RPh Floater, Night FT', 'Staff Pharmacist FT', 'Staff Pharmacist PT', 'CA Staff Pharmacist FT', 'CA Staff Pharmacist PT', 'Pharmacy Manager', 'CA Pharmacy Manager', 'Temporary PIC', 'PIC/Team Leader FT', 'RPh Advisor', 'Mgr,Rx Customer Care RPh', 'Distr Support Pharmacy Ldr CA', 'Rx Call Center PIC', 'Dist Supprt RPh CA Union Nt FT'
+                                    )
+                    THEN 'RPH'
+                    WHEN Upper(B.JOB_TITLE_NM) LIKE '%PHARMACIST%' OR Upper(B.JOB_TITLE_NM) LIKE '%MANAGER%' OR Upper(B.JOB_TITLE_NM) LIKE '%RX MGR%'
+                    THEN 'RPH'
+                    WHEN Upper(B.JOB_TITLE_NM) LIKE '%TECH%' OR Upper(B.JOB_TITLE_NM) LIKE '%INTERN%'
+                    THEN 'TECH'
+                    WHEN B.JOB_TITLE_NM IS NULL
+                    THEN NULL
+                
+            ELSE 'MISC'
+            END AS JOB_ROLE   
+        FROM QV_DATA  A
+        LEFT JOIN CORE_RX.CURATED_SENSITIVE.EMPLOYEE B     
+            ON A.EMPLOYEE_ID = B.EMPLOYEE_ID  
+        ),
+        
+    CONVERT_TO_LOCAL_TIME AS (
+            SELECT A.*
+                ,CASE 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ATLANTIC%' THEN A.VERIFICATION_START_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%EASTERN%' THEN A.VERIFICATION_START_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%CENTRAL%' THEN DATEADD('HOUR',-1, A.VERIFICATION_START_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%MOUNTAIN%' THEN DATEADD('HOUR',-2, A.VERIFICATION_START_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%AZ%' THEN DATEADD('HOUR',-3, A.VERIFICATION_START_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%PACIFIC%' THEN DATEADD('HOUR',-3, A.VERIFICATION_START_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ALASKA%' THEN DATEADD('HOUR',-5, A.VERIFICATION_START_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%HAWAII%' THEN DATEADD('HOUR',-6, A.VERIFICATION_START_TS )
+    			 END AS VERIFICATION_START_TS__local_time
+                ,CASE 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ATLANTIC%' THEN A.DISPOSITION_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%EASTERN%' THEN A.DISPOSITION_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%CENTRAL%' THEN DATEADD('HOUR',-1, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%MOUNTAIN%' THEN DATEADD('HOUR',-2, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%AZ%' THEN DATEADD('HOUR',-3, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%PACIFIC%' THEN DATEADD('HOUR',-3, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ALASKA%' THEN DATEADD('HOUR',-5, A.DISPOSITION_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%HAWAII%' THEN DATEADD('HOUR',-6, A.DISPOSITION_TS )
+    			 END AS DISPOSITION_TS__local_time                           
+            FROM CROSSWALK_EMPID A
+            LEFT JOIN CORE_RX.CURATED_LOCATION.STORE as STR
+                ON A.STORE_NBR = STR.STORE_NBR
+            )
+        SELECT A.*
+            ,least(DATEDIFF('second', A.VERIFICATION_START_TS, A.DISPOSITION_TS), 300) AS VERIFICATION_TIME
+            ,CASE WHEN UPPER(QUE_ITM_STUS_DSC) IN ( 'PRINT READY' )	 THEN 1.44 --1
+                  WHEN UPPER(QUE_ITM_STUS_DSC) IN ( 'SCAN READY', 'SCAN FAILED' ) THEN 90.56 --2,3
+                  ELSE VERIFICATION_TIME END AS TIME
+        FROM CONVERT_TO_LOCAL_TIME A
+
+) ;    
+
+-- SELECT TOP 100 *
+-- FROM QV_DATA;
+
+/***************************************************************
+		PRODUCTION QUEUE (estimated using Activity Table)
+***************************************************************/
+
+----------------------------------------------------
+--PRODUCTION QUEUE (ESTIMATED FROM ACTIVITY DATA):
+----------------------------------------------------
+CREATE OR REPLACE TEMPORARY TABLE QP_DATA AS (
+
+	WITH ACTIVITY_DATA AS (
+			SELECT DISTINCT 
+			       X.STORE_NBR
+                   ,X.RX_NBR
+                   ,X.FILL_NBR
+				  ,X.RXC_PRESCRIPTION_FILL_ID
+				  ,ACTV.ACTIVITY_CD
+				  ,ACTV.EFFECTIVE_TS
+				  ,ACTV.EMPLOYEE_ID
+                  ,ACTV_CD.ACTIVITY_DSC
+                  ,ACTV.PROCESSING_STORE_NBR
+			FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_ACTIVITY AS ACTV
+            INNER JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF AS X
+                ON ACTV.RXC_PRESCRIPTION_FILL_ID=X.RXC_PRESCRIPTION_FILL_ID
+            INNER JOIN CORE_RX.CURATED_SCRIPT.DIM_RX_ACTIVITY AS ACTV_CD
+                ON ACTV_CD.ACTIVITY_CD=ACTV.ACTIVITY_CD
+			WHERE ACTV.EFFECTIVE_TS::DATE BETWEEN $START_DATE AND $END_DATE
+			  AND ACTV.ACTIVITY_CD IN (
+									 2	--"LABEL PRINT"
+									,73	--"LABEL RE-PRINT"
+                                    ,74	--"ACCURACY SCAN"
+									,75	--"ACCURACY SCAN WITH CONFIRMATION"
+									,3	--"BYPASS ACCURACY SCAN"
+								   )
+			),
+
+
+            
+	ADD_JOB_ROLE AS (
+			SELECT A.*
+            ,B.JOB_TITLE_NM
+            ,CASE
+                WHEN B.JOB_TITLE_NM IN (
+                            'Pharmacy Lead Technician',
+                            'Pharmacy Technician',              
+                            'Inventory Specialist',
+                            'Shift Supervisor RX',
+                            'Pharmacy Intern - 5th Year',
+                            'Pharmacy Intern - Grad',
+                            'Pharmacy Intern - 3rd Year',
+                            'Pharmacy Intern - 4th Year',
+                            'Pharmacy Intern - 6th Year',
+                            'Tech I RX Front End Spc Mail',
+                            'Inventory Specialist', 'Shift Supervisor RX', 'Store Associate Rx', 'Operations Supervisor RX', 'Store Associate', 'Shift Supervisor', 'Store Ops Team Leader, RX', 'Inventory Specialist, FSS'
+                            )
+            THEN 'TECH'
+            
+            WHEN B.JOB_TITLE_NM IN (
+                            'Pharmacy Manager',
+                            'Pharmacy Manager, DL EL',
+                            'Staff Pharmacist Floater PT',
+                            'Staff Pharmacist FT',
+                            'Staff Pharmacist Floater FT',
+                            'Rx Mgr Emerging Leader',
+                            'Staff Pharmacist PT',
+                            'Night Pharmacist FT',
+                            'Staff Pharmacist Floater PT', 'Staff Pharmacist Floater FT', 'CA Staff Pharmacist Floater PT', 'CA Staff Pharmacist Floater FT', 'CA Staff RPh Floater, Night FT', 'Staff Pharmacist FT', 'Staff Pharmacist PT', 'CA Staff Pharmacist FT', 'CA Staff Pharmacist PT', 'Pharmacy Manager', 'CA Pharmacy Manager', 'Temporary PIC', 'PIC/Team Leader FT', 'RPh Advisor', 'Mgr,Rx Customer Care RPh', 'Distr Support Pharmacy Ldr CA', 'Rx Call Center PIC', 'Dist Supprt RPh CA Union Nt FT'
+                            )
+            THEN 'RPH'
+            WHEN Upper(B.JOB_TITLE_NM) LIKE '%PHARMACIST%' OR Upper(B.JOB_TITLE_NM) LIKE '%MANAGER%' OR Upper(B.JOB_TITLE_NM) LIKE '%RX MGR%'
+            THEN 'RPH'
+            WHEN Upper(B.JOB_TITLE_NM) LIKE '%TECH%' OR Upper(B.JOB_TITLE_NM) LIKE '%INTERN%'
+            THEN 'TECH'
+            WHEN B.JOB_TITLE_NM IS NULL
+            THEN NULL
+            
+            ELSE 'MISC'
+            END AS JOB_ROLE	  
+            
+            FROM ACTIVITY_DATA A
+            LEFT JOIN CORE_RX.CURATED_SENSITIVE.EMPLOYEE B		
+            ON A.EMPLOYEE_ID = B.EMPLOYEE_ID		
+			)
+
+
+			SELECT A.*
+			
+				  ,CASE 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ATLANTIC%' THEN A.EFFECTIVE_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%EASTERN%' THEN A.EFFECTIVE_TS 
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%CENTRAL%' THEN DATEADD('HOUR',-1, A.EFFECTIVE_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%MOUNTAIN%' THEN DATEADD('HOUR',-2, A.EFFECTIVE_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%AZ%' THEN DATEADD('HOUR',-3, A.EFFECTIVE_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%PACIFIC%' THEN DATEADD('HOUR',-3, A.EFFECTIVE_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%ALASKA%' THEN DATEADD('HOUR',-5, A.EFFECTIVE_TS )
+    				WHEN Upper(STR.TIMEZONE_DSC) LIKE '%HAWAII%' THEN DATEADD('HOUR',-6, A.EFFECTIVE_TS )
+    			 END AS EFFECTIVE_TS__local_time
+                 
+                 ,CASE WHEN ACTIVITY_CD IN ('2', '73') THEN 1.44
+                     WHEN ACTIVITY_CD IN ('74', '75', '3') THEN 89.76 --ASSUMING 3 BELONGS HERE SINCE EVEN IF BYPASSED IT WILL REQUIRE PACKING
+                     END AS ACTIVITY_TIME
+			FROM ADD_JOB_ROLE AS A
+			LEFT JOIN CORE_RX.CURATED_LOCATION.STORE AS STR
+				ON A.STORE_NBR = STR.STORE_NBR
+            WHERE JOB_ROLE IN ( 'RPH', 'TECH' )
+			
+);
+
+--select top 1000 *
+-- from QP_DATA;
+
+
+CREATE OR REPLACE TEMPORARY TABLE POS_DATA AS (
+
+	WITH BASE_POS_DATA AS (
+		SELECT DISTINCT
+      HDR.POS_EVENT_ID 
+    , HDR.TRANSACTION_START_TS
+    , HDR.TRANSACTION_END_TS
+    , HDR.TIME_ZONE_NM
+    , HDR.STORE_NBR 
+    , CASE 
+        WHEN HDR.LOCATION_ID IN (2) THEN 'DRIVE THRU'
+        ELSE 'OTHER'
+      END AS DRIVE_THRU_IND
+    , EMPLOYEE_ID
+FROM CORE_RX.CURATED_SCRIPT.POS_EVENT_HEADER AS HDR 
+--GATHERING ALL INSTANCES IN WHICH A PATIENT WAS SEARCHED AT POS 
+JOIN 
+    (SELECT DISTINCT
+          POS_EVENT_ID 
+    FROM CORE_RX.CURATED_SCRIPT.POS_EVENT_DETAIL
+    WHERE 
+        UPPER(EVENT_TYPE_NM) IN ('BUTTON_PRESSED')
+        AND UPPER(SCREEN_NM) IN ('PATIENT_SEARCH')
+    ) AS DTL 
+    ON HDR.POS_EVENT_ID = DTL.POS_EVENT_ID
+WHERE TRANSACTION_START_TS::DATE BETWEEN $START_DATE AND $END_DATE
+		)
+        
+			SELECT DISTINCT
+			       A.*
+			      ,B.JOB_TITLE_NM
+			      ,CASE
+			   			WHEN B.JOB_TITLE_NM IN (
+                                    'Pharmacy Lead Technician',
+                                    'Pharmacy Technician',              
+                                    'Inventory Specialist',
+                                    'Shift Supervisor RX',
+                                    'Pharmacy Intern - 5th Year',
+                                    'Pharmacy Intern - Grad',
+                                    'Pharmacy Intern - 3rd Year',
+                                    'Pharmacy Intern - 4th Year',
+                                    'Pharmacy Intern - 6th Year',
+                                    'Tech I RX Front End Spc Mail',
+                                    'Inventory Specialist', 'Shift Supervisor RX', 'Store Associate Rx', 'Operations Supervisor RX', 'Store Associate', 'Shift Supervisor', 'Store Ops Team Leader, RX', 'Inventory Specialist, FSS'
+                                    )
+                    THEN 'TECH'
+                
+                    WHEN B.JOB_TITLE_NM IN (
+                                    'Pharmacy Manager',
+                                    'Pharmacy Manager, DL EL',
+                                    'Staff Pharmacist Floater PT',
+                                    'Staff Pharmacist FT',
+                                    'Staff Pharmacist Floater FT',
+                                    'Rx Mgr Emerging Leader',
+                                    'Staff Pharmacist PT',
+                                    'Night Pharmacist FT',
+                                    'Staff Pharmacist Floater PT', 'Staff Pharmacist Floater FT', 'CA Staff Pharmacist Floater PT', 'CA Staff Pharmacist Floater FT', 'CA Staff RPh Floater, Night FT', 'Staff Pharmacist FT', 'Staff Pharmacist PT', 'CA Staff Pharmacist FT', 'CA Staff Pharmacist PT', 'Pharmacy Manager', 'CA Pharmacy Manager', 'Temporary PIC', 'PIC/Team Leader FT', 'RPh Advisor', 'Mgr,Rx Customer Care RPh', 'Distr Support Pharmacy Ldr CA', 'Rx Call Center PIC', 'Dist Supprt RPh CA Union Nt FT'
+                                    )
+                    THEN 'RPH'
+                    WHEN Upper(B.JOB_TITLE_NM) LIKE '%PHARMACIST%' OR Upper(B.JOB_TITLE_NM) LIKE '%MANAGER%' OR Upper(B.JOB_TITLE_NM) LIKE '%RX MGR%'
+                    THEN 'RPH'
+                    WHEN Upper(B.JOB_TITLE_NM) LIKE '%TECH%' OR Upper(B.JOB_TITLE_NM) LIKE '%INTERN%'
+                    THEN 'TECH'
+                    WHEN B.JOB_TITLE_NM IS NULL
+                    THEN NULL
+                
+            ELSE 'MISC'
+				END AS JOB_ROLE	  
+				,DATEDIFF('second', A.TRANSACTION_START_TS, A.TRANSACTION_END_TS) AS TRANSACTION_SECS
+			FROM BASE_POS_DATA A
+			INNER JOIN CORE_RX.CURATED_SENSITIVE.EMPLOYEE B		
+				ON A.EMPLOYEE_ID = B.EMPLOYEE_ID
+            WHERE JOB_ROLE IN ( 'RPH', 'TECH' )
+);
+
+CREATE OR REPLACE TEMPORARY TABLE WORK_ITEMS AS (
+WITH BASE_DATA AS (
+SELECT 'QT' AS WORK_TYPE
+    ,STORE_NBR
+    ,EMPLOYEE_ID_DVP AS EMPLOYEE_ID
+    ,DISPOSITION_TS AS WORK_ITEM_START_TS
+    ,TIMING_IN_SECONDS AS ELAPSED_SECS
+FROM QT_DATA
+UNION
+SELECT 'QV' AS WORK_TYPE
+    ,STORE_NBR
+    ,EMPLOYEE_ID
+    ,VERIFICATION_START_TS AS WORK_ITEM_START_TS
+    ,TIME AS ELAPSED_SECS
+FROM QV_DATA
+UNION
+SELECT 'QP' AS WORK_TYPE
+    ,STORE_NBR
+    ,EMPLOYEE_ID
+    ,EFFECTIVE_TS AS WORK_ITEM_START_TS
+    ,ACTIVITY_TIME AS ELAPSED_SECS
+FROM QP_DATA
+UNION
+SELECT CASE WHEN DRIVE_THRU_IND='DRIVE THRU' THEN 'POS DRIVE THRU' ELSE 'POS' END AS WORK_TYPE
+    ,STORE_NBR
+    ,EMPLOYEE_ID
+    ,TRANSACTION_START_TS AS WORK_ITEM_START_TS
+    ,TRANSACTION_SECS AS ELAPSED_SECS
+FROM POS_DATA)
+
+SELECT WORK_TYPE
+    ,STORE_NBR
+    ,EMPLOYEE_ID
+    ,WORK_ITEM_START_TS
+    ,COALESCE(LEAST(ELAPSED_SECS, 300), 30) AS ELAPSED_SECS
+FROM BASE_DATA
+WHERE EMPLOYEE_ID NOT IN ('QUEUE_REFRESH')
+);
+
+
+--Add in non-activity time
+SELECT WORK.WORK_TYPE
+    ,CASE WHEN DWSAB.EMPLOYEE_ID IS NULL THEN 'No Card'
+        WHEN WORK.WORK_TYPE='QT' AND QT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='QV' AND QV_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='QP' AND QP_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='POS DRIVE THRU' AND POSDT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='POS' AND POSNONDT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        ELSE 'Outside' END AS WITHIN_CARD
+    ,SUM(ELAPSED_SECS) AS TIME_SPENT
+FROM WORK_ITEMS AS WORK
+LEFT JOIN DWSAB_DATA AS DWSAB
+    ON WORK.EMPLOYEE_ID=LPAD(DWSAB.EMPLOYEE_ID, 7, '0')
+        AND WORK.WORK_ITEM_START_TS >= DWSAB.START_TIME_OF_THE_CARD AND WORK.WORK_ITEM_START_TS < DWSAB.END_TIME_OF_THE_CARD
+GROUP BY 1,2;
+
+SELECT WORK.STORE_NBR
+    ,WORK.EMPLOYEE_ID
+    ,DWSAB.ROLE
+    ,WORK.WORK_TYPE
+    ,CASE WHEN DWSAB.EMPLOYEE_ID IS NULL THEN 'No Card'
+        WHEN WORK.WORK_TYPE='QT' AND QT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='QV' AND QV_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='QP' AND QP_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='POS DRIVE THRU' AND POSDT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        WHEN WORK.WORK_TYPE='POS' AND POSNONDT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+        ELSE 'Outside' END AS WITHIN_CARD
+    ,SUM(ELAPSED_SECS) AS TIME_SPENT
+FROM WORK_ITEMS AS WORK
+LEFT JOIN DWSAB_DATA AS DWSAB
+    ON WORK.EMPLOYEE_ID=LPAD(DWSAB.EMPLOYEE_ID, 7, '0')
+        AND WORK.WORK_ITEM_START_TS >= DWSAB.START_TIME_OF_THE_CARD AND WORK.WORK_ITEM_START_TS < DWSAB.END_TIME_OF_THE_CARD
+GROUP BY 1,2,3,4,5;
+
+
+CREATE OR REPLACE TEMPORARY TABLE DWSAB_UTILIZATION AS (
+    SELECT DWSAB.STORE_NBR
+        ,DWSAB.EMPLOYEE_ID
+        ,DWSAB.ROLE AS EMPLOYEE_TYPE
+        ,WORK.WORK_TYPE
+        ,CASE WHEN DWSAB.EMPLOYEE_ID IS NULL THEN 'No Card'
+            WHEN WORK.WORK_TYPE='QT' AND QT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+            WHEN WORK.WORK_TYPE='QV' AND QV_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+            WHEN WORK.WORK_TYPE='QP' AND QP_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+            WHEN WORK.WORK_TYPE='POS DRIVE THRU' AND POSDT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+            WHEN WORK.WORK_TYPE='POS' AND POSNONDT_ACTIVITY_EXPECTED='Y' THEN 'Within' 
+            ELSE 'Outside' END AS WITHIN_CARD
+        ,SUM(ELAPSED_SECS)::FLOAT AS TIME_SPENT
+    FROM WORK_ITEMS AS WORK
+    LEFT JOIN DWSAB_DATA AS DWSAB
+        ON WORK.EMPLOYEE_ID=LPAD(DWSAB.EMPLOYEE_ID, 7, '0')
+            AND WORK.WORK_ITEM_START_TS >= DWSAB.START_TIME_OF_THE_CARD AND WORK.WORK_ITEM_START_TS < DWSAB.END_TIME_OF_THE_CARD
+    GROUP BY 1,2,3,4,5
+);
+
+SELECT STORE_NBR
+    ,EMPLOYEE_ID
+    ,EMPLOYEE_TYPE
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QT' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS QT_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QT' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS QT_OUTSIDE_CARD
+    ,CASE WHEN QT_WITHIN_CARD+QT_OUTSIDE_CARD=0 THEN 0.0 ELSE QT_WITHIN_CARD/(QT_WITHIN_CARD+QT_OUTSIDE_CARD) END AS QT_WITHIN_CARD_PCT
+    ,CASE WHEN QT_WITHIN_CARD+QT_OUTSIDE_CARD=0 THEN 0.0 ELSE QT_OUTSIDE_CARD/(QT_WITHIN_CARD+QT_OUTSIDE_CARD) END AS QT_OUTSIDE_CARD_PCT
+    
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QV' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS QV_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QV' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS QV_OUTSIDE_CARD
+    ,CASE WHEN QV_WITHIN_CARD+QV_OUTSIDE_CARD=0 THEN 0.0 ELSE QV_WITHIN_CARD/(QV_WITHIN_CARD+QV_OUTSIDE_CARD) END AS QV_WITHIN_CARD_PCT
+    ,CASE WHEN QV_WITHIN_CARD+QV_OUTSIDE_CARD=0 THEN 0.0 ELSE QV_OUTSIDE_CARD/(QV_WITHIN_CARD+QV_OUTSIDE_CARD) END AS QV_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QP' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS QP_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QP' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS QP_OUTSIDE_CARD
+    ,CASE WHEN QP_WITHIN_CARD+QP_OUTSIDE_CARD=0 THEN 0.0 ELSE QP_WITHIN_CARD/(QP_WITHIN_CARD+QP_OUTSIDE_CARD) END AS QP_WITHIN_CARD_PCT
+    ,CASE WHEN QP_WITHIN_CARD+QP_OUTSIDE_CARD=0 THEN 0.0 ELSE QP_OUTSIDE_CARD/(QP_WITHIN_CARD+QP_OUTSIDE_CARD) END AS QP_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS DRIVE THRU' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS POS_DRIVE_THRU_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS DRIVE THRU' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS POS_DRIVE_THRU_OUTSIDE_CARD
+    ,CASE WHEN POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD=0 THEN 0 ELSE POS_DRIVE_THRU_WITHIN_CARD/(POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD) END AS POS_DRIVE_THRU_WITHIN_CARD_PCT
+    ,CASE WHEN POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD=0 THEN 0 ELSE POS_DRIVE_THRU_OUTSIDE_CARD/(POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD) END AS POS_DRIVE_THRU_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS POS_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS POS_OUTSIDE_CARD
+    ,CASE WHEN POS_WITHIN_CARD+POS_OUTSIDE_CARD=0 THEN 0.0 ELSE POS_WITHIN_CARD/(POS_WITHIN_CARD+POS_OUTSIDE_CARD) END AS POS_WITHIN_CARD_PCT
+    ,CASE WHEN POS_WITHIN_CARD+POS_OUTSIDE_CARD=0 THEN 0.0 ELSE POS_OUTSIDE_CARD/(POS_WITHIN_CARD+POS_OUTSIDE_CARD) END AS POS_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WITHIN_CARD='Within' THEN TIME_SPENT END)) AS TOT_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS TOT_OUTSIDE_CARD
+    ,CASE WHEN TOT_WITHIN_CARD+TOT_OUTSIDE_CARD=0 THEN 0.0 ELSE TOT_WITHIN_CARD/(TOT_WITHIN_CARD+TOT_OUTSIDE_CARD) END AS TOT_WITHIN_CARD_PCT
+    ,CASE WHEN TOT_WITHIN_CARD+TOT_OUTSIDE_CARD=0 THEN 0.0 ELSE TOT_OUTSIDE_CARD/(TOT_WITHIN_CARD+TOT_OUTSIDE_CARD) END AS TOT_OUTSIDE_CARD_PCT
+    
+FROM DWSAB_UTILIZATION
+WHERE EMPLOYEE_TYPE IS NOT NULL
+GROUP BY 1,2,3;
+
+SELECT STORE_NBR
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QT' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS QT_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QT' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS QT_OUTSIDE_CARD
+    ,CASE WHEN QT_WITHIN_CARD+QT_OUTSIDE_CARD=0 THEN 0.0 ELSE QT_WITHIN_CARD/(QT_WITHIN_CARD+QT_OUTSIDE_CARD) END AS QT_WITHIN_CARD_PCT
+    ,CASE WHEN QT_WITHIN_CARD+QT_OUTSIDE_CARD=0 THEN 0.0 ELSE QT_OUTSIDE_CARD/(QT_WITHIN_CARD+QT_OUTSIDE_CARD) END AS QT_OUTSIDE_CARD_PCT
+    
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QV' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS QV_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QV' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS QV_OUTSIDE_CARD
+    ,CASE WHEN QV_WITHIN_CARD+QV_OUTSIDE_CARD=0 THEN 0.0 ELSE QV_WITHIN_CARD/(QV_WITHIN_CARD+QV_OUTSIDE_CARD) END AS QV_WITHIN_CARD_PCT
+    ,CASE WHEN QV_WITHIN_CARD+QV_OUTSIDE_CARD=0 THEN 0.0 ELSE QV_OUTSIDE_CARD/(QV_WITHIN_CARD+QV_OUTSIDE_CARD) END AS QV_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QP' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS QP_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='QP' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS QP_OUTSIDE_CARD
+    ,CASE WHEN QP_WITHIN_CARD+QP_OUTSIDE_CARD=0 THEN 0.0 ELSE QP_WITHIN_CARD/(QP_WITHIN_CARD+QP_OUTSIDE_CARD) END AS QP_WITHIN_CARD_PCT
+    ,CASE WHEN QP_WITHIN_CARD+QP_OUTSIDE_CARD=0 THEN 0.0 ELSE QP_OUTSIDE_CARD/(QP_WITHIN_CARD+QP_OUTSIDE_CARD) END AS QP_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS DRIVE THRU' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS POS_DRIVE_THRU_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS DRIVE THRU' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS POS_DRIVE_THRU_OUTSIDE_CARD
+    ,CASE WHEN POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD=0 THEN 0 ELSE POS_DRIVE_THRU_WITHIN_CARD/(POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD) END AS POS_DRIVE_THRU_WITHIN_CARD_PCT
+    ,CASE WHEN POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD=0 THEN 0 ELSE POS_DRIVE_THRU_OUTSIDE_CARD/(POS_DRIVE_THRU_WITHIN_CARD+POS_DRIVE_THRU_OUTSIDE_CARD) END AS POS_DRIVE_THRU_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS' AND WITHIN_CARD='Within' THEN TIME_SPENT END)) AS POS_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WORK_TYPE='POS' AND WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS POS_OUTSIDE_CARD
+    ,CASE WHEN POS_WITHIN_CARD+POS_OUTSIDE_CARD=0 THEN 0.0 ELSE POS_WITHIN_CARD/(POS_WITHIN_CARD+POS_OUTSIDE_CARD) END AS POS_WITHIN_CARD_PCT
+    ,CASE WHEN POS_WITHIN_CARD+POS_OUTSIDE_CARD=0 THEN 0.0 ELSE POS_OUTSIDE_CARD/(POS_WITHIN_CARD+POS_OUTSIDE_CARD) END AS POS_OUTSIDE_CARD_PCT
+
+    ,ZEROIFNULL(SUM(CASE WHEN WITHIN_CARD='Within' THEN TIME_SPENT END)) AS TOT_WITHIN_CARD
+    ,ZEROIFNULL(SUM(CASE WHEN WITHIN_CARD='Outside' THEN TIME_SPENT END)) AS TOT_OUTSIDE_CARD
+    ,CASE WHEN TOT_WITHIN_CARD+TOT_OUTSIDE_CARD=0 THEN 0.0 ELSE TOT_WITHIN_CARD/(TOT_WITHIN_CARD+TOT_OUTSIDE_CARD) END AS TOT_WITHIN_CARD_PCT
+    ,CASE WHEN TOT_WITHIN_CARD+TOT_OUTSIDE_CARD=0 THEN 0.0 ELSE TOT_OUTSIDE_CARD/(TOT_WITHIN_CARD+TOT_OUTSIDE_CARD) END AS TOT_OUTSIDE_CARD_PCT
+FROM DWSAB_UTILIZATION
+WHERE EMPLOYEE_TYPE IS NOT NULL
+GROUP BY 1;
+
+-- SELECT TOP 10 * FROM DWSAB_UTILIZATION;
+-- select 1;
+
+WITH DATE_INCREMENT AS (
+    SELECT $START_DATE::DATETIME AS TIME_INTERVAL
+    UNION ALL
+    SELECT DATEADD('MINUTE', 15, TIME_INTERVAL) AS TIME_INTERVAL
+    FROM DATE_INCREMENT
+    WHERE DATEADD('MINUTE', 15, TIME_INTERVAL)<=$END_DATE
+)
+SELECT DT.TIME_INTERVAL
+    ,DATE(DT.TIME_INTERVAL) AS DT
+    ,HOUR(DT.TIME_INTERVAL)*100+MINUTE(DT.TIME_INTERVAL) AS HR_MIN
+    ,DWSAB.STORE_NBR
+    ,MAX(CASE WHEN DWSAB.START_TIME_OF_THE_CARD IS NOT NULL THEN 1 ELSE 0 END) AS CARD_IND
+FROM DATE_INCREMENT as DT
+LEFT JOIN DWSAB_DATA AS DWSAB
+    ON DT.TIME_INTERVAL BETWEEN DWSAB.START_TIME_OF_THE_CARD AND DWSAB.END_TIME_OF_THE_CARD
+GROUP BY 1,2,3,4
+;
