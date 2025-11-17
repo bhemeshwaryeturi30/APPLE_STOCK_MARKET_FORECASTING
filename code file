@@ -1,1110 +1,199 @@
-/*=============================================================================
- * DRIVE-THRU ANALYSIS - PRESCRIPTION TRANSACTION ANALYTICS
- *=============================================================================
- * 
- * Purpose: 
- *   Comprehensive analysis of drive-thru and in-store prescription transactions
- *   including messaging patterns, drug classifications, and customer experience metrics
- *
- * 
- * Output Tables:
- *   - DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP
- *   - DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED
- *
- * Dependencies:
- *   - CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK
- *   - SEM_RX.COMMON_RX.POS_TS_ALL_TRANSACTION_DETAIL
- *   - APP_OMNIRX.OMNI_DL.ONR_FINAL_TBL
- *   - CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL
- *   - Various reference tables for drug classifications
- *
- * Notes:
- *   - Uses fiscal weeks for time-based filtering
- *   - Includes multiple data enrichment steps for drug flags
- *   - Creates analytical flags for transaction status and messaging
- *   - Performance optimization opportunities noted throughout
- *============================================================================*/
+/*
+================================================================================
+EXCEPTION MANAGEMENT PRIMARY KEY LOGIC - TRIAGE QUEUE ANALYSIS
+================================================================================
 
--- =============================================================================
--- SECTION 1: TIME FRAME CONFIGURATION
--- =============================================================================
--- Set analysis timeframe using fiscal week numbers
--- FISCAL_WEEK_START: Beginning week for analysis (default: start of FY25)
--- FISCAL_WEEK_END: Dynamic end week (latest complete week before current date)
-SET FISCAL_WEEK_START = 202501;
-SET FISCAL_WEEK_END = (SELECT MAX(END_WEEK_NBR) FROM CORE_FSSC.CURATED_CALENDAR.FISCAL_MONTH WHERE END_DT < CURRENT_DATE());
---SET FISCAL_WEEK_END = 202526; -- Manual override option for testing
+PURPOSE:
+This script creates a comprehensive view of Triage Queue (QT) instances by assigning
+Store-Rx-Fill composite keys through multiple data source linkage methods. It enables
+analysis of pharmacy exception management processes and workflow efficiency.
 
--- Create filtered fiscal week dimension table for date boundary calculations
--- This temporary table contains only the fiscal weeks within our analysis window
-CREATE OR REPLACE TEMPORARY TABLE FISCAL_WEEK_FILTERED AS (
-    SELECT
-        FISCAL_YEAR_NBR,    -- Fiscal year number for grouping
-        FISCAL_MONTH_NBR,   -- Fiscal month number for aggregation
-        FISCAL_WEEK_NBR,    -- Fiscal week number (primary filter)
-        START_DT,           -- Week start date for timestamp filtering
-        END_DT              -- Week end date for timestamp filtering
-    FROM CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK
-    WHERE FISCAL_WEEK_NBR BETWEEN $FISCAL_WEEK_START AND $FISCAL_WEEK_END
-);
+BUSINESS CONTEXT:
+- Triage Queue contains pharmacy exceptions requiring manual intervention
+- Exceptions may relate to prescription fills, outbound contacts, or action notes
+- Multiple linking methods ensure maximum data coverage and completeness
+- Supports operational analytics for exception resolution and process improvement
 
--- Extract absolute start and end dates for the analysis period
--- These variables will be used throughout the script for consistent filtering
-SET START_DATE = (SELECT MIN(START_DT) FROM FISCAL_WEEK_FILTERED);
-SET END_DATE = (SELECT MAX(END_DT) FROM FISCAL_WEEK_FILTERED);
+KEY FUNCTIONALITY:
+1. Links triage queue items to prescription fills via multiple pathways
+2. Creates composite keys for unique identification across systems
+3. Adds triage classification and fiscal reporting dimensions
+4. Enables comprehensive exception management analysis
 
+LINKING METHODOLOGY HIERARCHY:
+1. Direct QT key (if store/rx/fill available in triage queue)
+2. Prescription Fill Interface (PFI) key via RXC_PRESCRIPTION_FILL_ID
+3. Outbound Contact (OBD) key via prescription fill linkage
+4. Action Note (AN) key via RXC_ACTION_NOTE_ID
+5. COALESCE prioritizes available keys for maximum coverage
 
+OUTPUT: Analytical dataset for exception management reporting and process optimization
+================================================================================
+*/
 
--- =============================================================================
--- SECTION 2: MAIN DATA AGGREGATION AND JOINS
--- =============================================================================
--- Create the primary analysis table by joining multiple data sources
--- This creates a comprehensive dataset linking POS transactions, prescriptions, 
--- messaging, and operational data
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP AS (
-
--- -----------------------------------------------------------------------------
--- CTE 1: DRIVE_THRU_DATA - POS Transaction Base Data
--- -----------------------------------------------------------------------------
--- Purpose: Extract POS transactions from drive-thru and in-store locations
--- Data Quality Notes:
---   - Contains duplicate records differentiated only by created_ts, hence DISTINCT
---   - TRANSACTION_ID has missing values, using POS_EVENT_ID as primary key
---   - POS_EVENT_ID used for joining with ONR table for prescription linkage
-WITH DRIVE_THRU_DATA AS (
-    SELECT 
-        DISTINCT
-            POS_EVENT_ID,              -- Primary identifier for POS events
-            TRANSACTION_ID,            -- Secondary ID (has nulls)
-            LOCATION_CD,               -- Drive-thru vs in-store indicator
-            STORE_NBR,                 -- Store identifier
-            REGISTER_NBR,              -- Point of sale register
-            TRANSACTION_NBR,           -- Sequential transaction number
-            TRANSACTION_START_TS,      -- When customer interaction began
-            TRANSACTION_END_TS         -- When transaction completed
-    FROM SEM_RX.COMMON_RX.POS_TS_ALL_TRANSACTION_DETAIL
-    WHERE (LOCATION_CD LIKE '%DRIVE%'           -- Drive-thru transactions
-          OR LOCATION_CD LIKE '%STORE%')        -- In-store transactions
-          AND TRANSACTION_START_TS BETWEEN $START_DATE AND $END_DATE
-),
--- -----------------------------------------------------------------------------
--- CTE 2: ONR_DATA - Order and Readiness Information
--- -----------------------------------------------------------------------------
--- Purpose: Link POS events to prescription order readiness and fulfillment data
--- Key Fields:
---   - FIRST_ATTEMPT_ORDER_READY: Whether prescription was ready on first pickup attempt
---   - RTS_EVNT: Return to Stock event indicator
---   - FILL_LOCATION_CD: Where prescription was filled (affects readiness timing)
-ONR_DATA AS (
+-- ASSIGN A STORE-RX-FILL KEY TO ALL QT INSTANCES BASED ON DIFFERENT METHODS
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.QT_EXCEPTION_MANAGEMENT_SP
+AS (
+WITH TRIAGE_DATA AS (
     SELECT
         DISTINCT
-            POS_EVENT_ID,                                                   -- Links to POS transaction
-            STORE_NBR,                                                      -- Store number
-            NEW_RX_NBR,                                                     -- Prescription number
-            NEW_FILL_NBR,                                                   -- Fill sequence number
-            CONCAT(STORE_NBR,'-',NEW_RX_NBR,'-',NEW_FILL_NBR) AS ONR_DATA_KEY, -- Composite key
-            PROMISE_TS,                                                     -- Promised ready timestamp
-            FIRST_ATTEMPT_ORDER_READY,                                      -- Y/N flag for first attempt success
-            ONR_BFR_PRMS,                                                   -- Order ready before promise time
-            RTS_EVNT,                                                       -- Return to stock event
-            FILL_LOCATION_CD                                                -- Fill location (WB=Will-Call Bin, etc.)
-    FROM APP_OMNIRX.OMNI_DL.ONR_FINAL_TBL
-    WHERE TRANSACTION_START_TS BETWEEN $START_DATE AND $END_DATE
-),
--- -----------------------------------------------------------------------------
--- CTE 3: BASE_RX - Core Prescription Information
--- -----------------------------------------------------------------------------
--- Purpose: Core prescription data with business indicators for sales and compounding
--- Performance Note: Extended lookback period (6 months) to capture prescription history
--- Future Optimization: Consider including GCN/NDC codes here to reduce downstream joins
-BASE_RX AS (
-    SELECT
-        DISTINCT
-            STORE_NBR,                                                      -- Store identifier
-            RX_NBR,                                                         -- Prescription number
-            FILL_NBR,                                                       -- Fill sequence
-            CONCAT(STORE_NBR,'-',RX_NBR,'-',FILL_NBR) AS BASE_RX_KEY,      -- Composite business key
-            POS_TXN_TS,                                                     -- Point of sale timestamp
-            PRESCRIPTION_FILL_TS,                                           -- When prescription was filled
-            RX_ORIGIN_CD,    -- Prescription origin: Written, Telephone, Electronic, Fax, Internal Transfer
-            FILL_STATUS_CD,                                                 -- Status code (7=Sold)
-            SOURCE_CD,                                                      -- Source system code
-            CASE WHEN COMPOUND_IND = 'Y' THEN 1 ELSE 0 END AS MIX_INDICATOR,  -- Compound/mix flag
-            CASE WHEN FILL_STATUS_CD IN (7) THEN 1 ELSE 0 END AS SOLD_INDICATOR -- Sales completion flag
-        FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL
-        WHERE PRESCRIPTION_FILL_TS >= DATEADD('MONTH', -6, $START_DATE)     -- Extended lookback period
-),
--- -----------------------------------------------------------------------------
--- CTE 4: INDUCTED_QV2_DATE - Prescription Workflow Timestamps
--- -----------------------------------------------------------------------------
--- Purpose: Track key workflow milestones in prescription processing
--- Business Context:
---   - INDUCTION_DATE: When prescription entered the fulfillment system
---   - QV2_DATE: Quality verification step 2 completion (ACTIVITY_CD = 4)
---   - Used to calculate processing times and identify workflow bottlenecks
-INDUCTED_QV2_DATE AS (
-    SELECT
-        X.STORE_NBR,
-        X.RX_NBR,
-        X.FILL_NBR,
-        CONCAT(X.STORE_NBR,'-',X.RX_NBR,'-',X.FILL_NBR) AS INDUCTED_RX_KEY,
-        MIN(PACT.REC_EFF_TS) AS INDUCTION_DATE,                            -- First activity timestamp
-        MIN(CASE WHEN ACTIVITY_CD = 4 THEN PACT.REC_EFF_TS END) AS QV2_DATE -- QV2 completion timestamp
-    FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_ACTIVITY AS PACT
-    INNER JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF AS X
-        ON PACT.RXC_PRESCRIPTION_FILL_ID = X.RXC_PRESCRIPTION_FILL_ID
-    INNER JOIN BASE_RX AS BASE
-        ON BASE.BASE_RX_KEY = CONCAT(X.STORE_NBR,'-',X.RX_NBR,'-',X.FILL_NBR)
-    WHERE TO_DATE(PACT.REC_EFF_TS) > DATEADD(MONTH, -6, $START_DATE)
-    GROUP BY 1,2,3,4
-),   
--- -----------------------------------------------------------------------------
--- CTE 5: OPTY_COL - Customer Messaging and Outreach Opportunities
--- -----------------------------------------------------------------------------
--- Purpose: Track automated messaging sent to customers about their prescriptions
--- Data Quality Note: Contains duplicates, DISTINCT applied for deduplication
--- Business Value: Links customer communications to transaction outcomes
-OPTY_COL AS (
-    SELECT
-        DISTINCT
-            STORE_NBR,
-            RX_NBR,
-            FILL_NBR,
-            CONCAT(STORE_NBR,'-',RX_NBR,'-',FILL_NBR) AS OPTY_COL_KEY,      -- Links to prescription
-            PROGRAM_CD,                                                      -- Message program type
-            OPPORTUNITY_ID,                                                  -- Unique message identifier
-            OPPORTUNITY_DELIVERY_TS,                                         -- When message was sent
-            OPPORTUNITY_EXPIRY_TS                                            -- Message expiration time
-    FROM CORE_RX.CURATED_OUTREACH.OPPORTUNITY_COLLATION
-    WHERE TO_DATE(REC_EFF_TS) > DATEADD(MONTH, -6, $START_DATE)
-),
--- -----------------------------------------------------------------------------
--- CTE 6: OPTY_SMS - SMS Message Content
--- -----------------------------------------------------------------------------
--- Purpose: Capture actual SMS message content sent to customers
--- Data Quality: Multiple SMS entries per opportunity ID, using ROW_NUMBER for deduplication
--- Business Use: Enables analysis of message effectiveness and customer response patterns
-OPTY_SMS AS (
-    WITH RANKED_OPTY_SMS AS (
-        SELECT *,
-               ROW_NUMBER() OVER (
-                   PARTITION BY OPPORTUNITY_ID
-                   ORDER BY SMS_VERBIAGE                                    -- Deterministic ordering for consistency
-               ) AS RN
-        FROM APP_OMNIRX.OMNI_DL.SMS_DL
-    )
-    SELECT
-        OPPORTUNITY_ID,                                                      -- Links to OPTY_COL
-        SMS_VERBIAGE                                                         -- Actual message text
-    FROM RANKED_OPTY_SMS
-    WHERE SMS_TIMESTAMP > DATEADD(MONTH, -6, $START_DATE)
-        AND SMS_TYPE = 'OUT-SMS'                                            -- Outbound messages only
-        AND RN = 1                                                          -- First message per opportunity
-)
--- -----------------------------------------------------------------------------
--- MAIN SELECT: Comprehensive Data Integration
--- -----------------------------------------------------------------------------
--- Purpose: Combine all data sources into unified analytical dataset
--- Join Strategy:
---   - INNER JOINs: Core prescription and transaction data (required)
---   - LEFT JOINs: Optional messaging data (not all prescriptions have messages)
-SELECT
-    -- Time Dimensions
-    FISCAL_YEAR_NBR,                        -- Fiscal year for aggregation
-    FISCAL_MONTH_NBR,                       -- Fiscal month for trending
-    FISCAL_WEEK_NBR,                        -- Fiscal week for detailed analysis
+            QT.*,                                                          -- All triage queue fields
+            -- PRIMARY KEY GENERATION: Create composite keys from different data sources
+            CONCAT(QT.STORE_NBR, '-', QT.RX_NBR, '-', QT.RX_FILL_NBR) AS QT_KEY,     -- Method 1: Direct from triage queue
+            CONCAT(X1.STORE_NBR, '-', X1.RX_NBR, '-', X1.FILL_NBR) AS PFI_KEY,       -- Method 2: Via prescription fill interface
+            CONCAT(X2.STORE_NBR, '-', X2.RX_NBR, '-', X2.FILL_NBR) AS OBD_KEY,       -- Method 3: Via outbound contact linkage
+            CONCAT(AN.STORE_NBR, '-', AN.RX_NBR, '-', AN.FILL_NBR) AS AN_KEY,        -- Method 4: Via action note linkage
+            
+            -- HIERARCHICAL KEY SELECTION: Choose best available key using priority order
+            COALESCE(QT_KEY, PFI_KEY, OBD_KEY, AN_KEY) AS FINAL_KEY,
+            
+            -- BUSINESS CLASSIFICATION: Add triage metadata for analysis
+            DTL.TRIAGE_GROUP,                   -- High-level exception category
+            DTL.TRIAGE_ITEM_TYPE_DETAIL_DSC,    -- Detailed exception description
+            DTL.QT_TYPE,                        -- Queue type classification
+            
+            -- TEMPORAL DIMENSION: Add fiscal reporting period
+            FQ.FISCAL_QUARTER_NBR               -- Fiscal quarter for executive reporting
+    FROM
+        CORE_RX.CURATED_SCRIPT.TRIAGE_QUEUE QT  -- Base triage queue data
+    -- METHOD 1 LINKAGE: Direct prescription fill reference from triage queue
+    LEFT JOIN
+        CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF X1
+     ON QT.RXC_PRESECRIPTION_FILL_ID = X1.RXC_PRESCRIPTION_FILL_ID  -- Direct prescription fill link
+     AND X1.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)          -- Performance filter: 12-month lookback
+    -- METHOD 2 LINKAGE: Via outbound contact system (for communication-related exceptions)
+    LEFT JOIN
+        CORE_RX.CURATED_OUTREACH.RXC_OUTBOUND_CONTACT OBD
+     ON QT.OUTBOUND_CONTACT_ID = OBD.RXC_OUTBOUND_CONTACT_ID        -- Link triage to outbound contact
+     AND OBD.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)         -- Performance filter: 12-month lookback
+    LEFT JOIN
+        CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF X2
+     ON OBD.RXC_PRESCRIPTION_FILL_ID = X2.RXC_PRESCRIPTION_FILL_ID  -- Link outbound contact to prescription
+     AND X2.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)          -- Performance filter: 12-month lookback
+    -- METHOD 3 LINKAGE: Via action notes (for clinical/procedural exceptions)
+    LEFT JOIN
+        CORE_RX.CURATED_SCRIPT.RXC_ACTION_NOTE AN
+     ON AN.RXC_ACTION_NOTE_ID = QT.ACTION_NOTE_ID                   -- Link triage to action notes
+     AND AN.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)          -- Performance filter: 12-month lookback
+    -- BUSINESS METADATA ENRICHMENT: Add triage classification details
+    LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.REF_QT_TRIAGE_ITEM_DESC_SP DTL
+     ON  QT.TRIAGE_ITEM_TYPE_DETAIL_ID = DTL.TRIAGE_ITEM_TYPE_DETAIL_ID  -- Link to triage item descriptions
     
-    -- Core Identifiers
-    BASE_RX.STORE_NBR,                      -- Store number
-    BASE_RX.RX_NBR,                         -- Prescription number
-    BASE_RX.FILL_NBR,                       -- Fill sequence number
-    DRIVE_THRU_DATA.POS_EVENT_ID,          -- POS transaction identifier
-    DRIVE_THRU_DATA.TRANSACTION_ID,        -- Secondary transaction ID
-    OPTY_COL.OPPORTUNITY_ID,               -- Messaging opportunity ID
-    
-    -- Process Timestamps
-    INDUCTED_QV2_DATE.INDUCTION_DATE,      -- Prescription entry into system
-    BASE_RX.PRESCRIPTION_FILL_TS,          -- Fill completion timestamp
-    INDUCTED_QV2_DATE.QV2_DATE,            -- Quality verification completion
-    BASE_RX.POS_TXN_TS,                    -- Point of sale timestamp
-    DRIVE_THRU_DATA.TRANSACTION_START_TS,  -- Customer interaction start
-    DRIVE_THRU_DATA.TRANSACTION_END_TS,    -- Customer interaction end
-    ONR_DATA.PROMISE_TS,                   -- Promised ready time
-    OPTY_COL.OPPORTUNITY_DELIVERY_TS,      -- Message delivery time
-    OPTY_COL.OPPORTUNITY_EXPIRY_TS,        -- Message expiration time
-    
-    -- Operational Indicators
-    ONR_DATA.FIRST_ATTEMPT_ORDER_READY,   -- First attempt success flag
-    ONR_DATA.ONR_BFR_PRMS,                 -- Ready before promise flag
-    ONR_DATA.FILL_LOCATION_CD,             -- Fill location code
-    ONR_DATA.RTS_EVNT,                     -- Return to stock event
-    BASE_RX.FILL_STATUS_CD,                -- Fill status (7=sold)
-    BASE_RX.SOURCE_CD,                     -- Source system
-    BASE_RX.SOLD_INDICATOR,                -- Sale completion flag
-    BASE_RX.MIX_INDICATOR,                 -- Compound prescription flag
-    BASE_RX.RX_ORIGIN_CD,                  -- Prescription origin method
-    
-    -- Customer Communication
-    OPTY_COL.PROGRAM_CD,                   -- Message program type
-    OPTY_SMS.SMS_VERBIAGE,                 -- Actual message content
-    
-    -- Location Context
-    DRIVE_THRU_DATA.LOCATION_CD            -- Drive-thru vs in-store
-    
-FROM BASE_RX
--- Required joins for core prescription and transaction data
-INNER JOIN INDUCTED_QV2_DATE
-    ON BASE_RX.BASE_RX_KEY = INDUCTED_QV2_DATE.INDUCTED_RX_KEY
-INNER JOIN ONR_DATA
-    ON BASE_RX.BASE_RX_KEY = ONR_DATA.ONR_DATA_KEY
-INNER JOIN DRIVE_THRU_DATA
-    ON ONR_DATA.POS_EVENT_ID = DRIVE_THRU_DATA.POS_EVENT_ID
-INNER JOIN FISCAL_WEEK_FILTERED
-    ON TRANSACTION_START_TS BETWEEN FISCAL_WEEK_FILTERED.START_DT AND FISCAL_WEEK_FILTERED.END_DT
-    
--- Optional joins for messaging data (not all prescriptions have associated messages)
-LEFT JOIN OPTY_COL
-    ON BASE_RX.BASE_RX_KEY = OPTY_COL.OPTY_COL_KEY
-LEFT JOIN OPTY_SMS
-    ON OPTY_COL.OPPORTUNITY_ID = OPTY_SMS.OPPORTUNITY_ID
+    -- FISCAL CALENDAR INTEGRATION: Add reporting period dimension
+    INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_QUARTER FQ
+     ON QT.DISPOSITION_TS BETWEEN FQ.START_DT AND FQ.END_DT          -- Match disposition date to fiscal quarter
+     AND FQ.FISCAL_QUARTER_NBR IN (20252)                           -- Filter to specific fiscal quarter (Q2 FY2025)
+        )
+-- FINAL OUTPUT: Complete triage dataset with all linkage methods and business dimensions
+SELECT * FROM TRIAGE_DATA);
 
-ORDER BY DRIVE_THRU_DATA.TRANSACTION_START_TS DESC    -- Most recent transactions first
-);
+/*
+================================================================================
+INPUT TABLES AND THEIR FEATURES
+================================================================================
 
--- =============================================================================
--- SECTION 3: DATA ENRICHMENT - BUSINESS KEYS AND PROGRAM DESCRIPTIONS
--- =============================================================================
--- Purpose: Add composite business keys and decode program descriptions for reporting
--- Performance Note: This step could be optimized by integrating into the main query above
--- TODO: Consolidate this enrichment step into the primary CTE structure
+1. CORE_RX.CURATED_SCRIPT.TRIAGE_QUEUE (Primary Source)
+   - RXC_PRESCRIPTION_FILL_ID: Direct link to prescription fills
+   - OUTBOUND_CONTACT_ID: Link to customer communication events
+   - ACTION_NOTE_ID: Link to clinical/procedural notes
+   - STORE_NBR: Store number (may be NULL, requiring linkage)
+   - RX_NBR: Prescription number (may be NULL, requiring linkage)  
+   - RX_FILL_NBR: Fill number (may be NULL, requiring linkage)
+   - TRIAGE_ITEM_TYPE_DETAIL_ID: Exception type classification
+   - DISPOSITION_TS: Exception resolution timestamp
+   - All other triage queue fields (status, priority, assignment, etc.)
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP AS (
-    SELECT *,
-        -- -----------------------------------------------------------------------------
-        -- Composite Business Keys for Analysis and Joining
-        -- -----------------------------------------------------------------------------
-        CONCAT(STORE_NBR, '-', RX_NBR, '-', FILL_NBR) AS STORE_RX_FILL_KEY,
-        CONCAT(POS_EVENT_ID, '|', STORE_NBR, '-', RX_NBR, '-', FILL_NBR) AS POS_STORE_RX_FILL_KEY,
-        CONCAT(OPPORTUNITY_ID, '|', POS_EVENT_ID, '|', STORE_NBR, '-', RX_NBR, '-', FILL_NBR) AS OPP_POS_STORE_RX_FILL_KEY,
-        
-        -- -----------------------------------------------------------------------------
-        -- Program Code Translation to Business-Friendly Descriptions
-        -- -----------------------------------------------------------------------------
-        -- Purpose: Convert cryptic program codes to readable descriptions for reporting
-        CASE
-            WHEN PROGRAM_CD='90D'      THEN '90 Day' 
-            WHEN PROGRAM_CD='90RF'     THEN '90 Day Ready Fill' 
-            WHEN PROGRAM_CD='AN'       THEN 'Action Note' 
-            WHEN PROGRAM_CD='CTFILL'   THEN 'Confirm to Fill' 
-            WHEN PROGRAM_CD='DGADP'    THEN 'Digital Adoption' 
-            WHEN PROGRAM_CD='DME'      THEN 'Durable Medical Equipment' 
-            WHEN PROGRAM_CD='EXPKC'    THEN 'Knowledge Check' 
-            WHEN PROGRAM_CD='EXPSE'    THEN 'Side Effects' 
-            WHEN PROGRAM_CD='EXPVC'    THEN 'Video Counsel'
-            WHEN PROGRAM_CD='IMZ'      THEN 'Immunization' 
-            WHEN PROGRAM_CD='OHLD'     THEN 'On Hold' 
-            WHEN PROGRAM_CD='ONDMT'    THEN 'On Demand Tool (mostly experiment campaigns)' 
-            WHEN PROGRAM_CD='OOPM'     THEN 'Opted Out Prescriber Message' 
-            WHEN PROGRAM_CD='OOR'      THEN 'One Order Ready' 
-            WHEN PROGRAM_CD='ORRTS'    THEN 'Order Ready Reminders' 
-            WHEN PROGRAM_CD='OTR'      THEN 'One Time Refill' 
-            WHEN PROGRAM_CD='PRRP'     THEN 'Proactive Refill Reminder Program' 
-            WHEN PROGRAM_CD='PRS_UPD'  THEN 'Prescriber Update' 
-            WHEN PROGRAM_CD='RFPRM'    THEN 'Ready Fill Primer' 
-            WHEN PROGRAM_CD='RFRTS'    THEN 'Ready Fill Return To Stock' 
-            WHEN PROGRAM_CD='RR'       THEN 'Refill Reminder' 
-            WHEN PROGRAM_CD='RTOR'     THEN 'Real Time Order Ready' 
-            WHEN PROGRAM_CD='RXR'      THEN 'Rx Received' 
-            WHEN PROGRAM_CD='SRFO'     THEN 'SMS Ready Fill Offer' 
-            WHEN PROGRAM_CD='SS_INIT'  THEN 'Script Sync Initial' 
-            WHEN PROGRAM_CD='SSYNC'    THEN 'Script Sync Add On' 
-            WHEN PROGRAM_CD='STCLR'    THEN 'Store Closer' 
-            WHEN PROGRAM_CD='WLCM'     THEN 'Welcome Message' 
-            ELSE 'UNDEFINED' 
-        END AS PROGRAM_DESC,
-        
-        -- -----------------------------------------------------------------------------
-        -- Time Difference Calculations for Performance Analysis
-        -- -----------------------------------------------------------------------------
-        -- Time between message delivery and customer arrival (minutes)
-        DATEDIFF(MINUTE, OPPORTUNITY_DELIVERY_TS, TRANSACTION_START_TS) AS OPPR_TRNS_DIFF,
-        
-        -- Total time from prescription induction to customer pickup (minutes)
-        -- Note: Column name suggests days but calculation is in minutes - consider renaming
-        DATEDIFF(MINUTE, INDUCTION_DATE, TRANSACTION_START_TS) AS DAYS_TO_TRANSACT_DURATION
-        
-    FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP
-);
--- =============================================================================
--- SECTION 4: DRUG CLASSIFICATION FLAGS - COLD CHAIN MEDICATIONS
--- =============================================================================
--- Purpose: Identify prescriptions requiring cold chain storage (refrigerated)
--- Business Impact: Cold chain medications may require different handling procedures
---                 affecting pickup times and customer experience
--- Performance Note: Multiple table updates could be consolidated for efficiency
--- TODO: Integrate drug classification logic into main query for better performance
+2. CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF (Linkage Table)
+   - RXC_PRESCRIPTION_FILL_ID: Prescription fill identifier (PK)
+   - STORE_NBR: Store number
+   - RX_NBR: Prescription number
+   - FILL_NBR: Fill number
+   - REC_EFF_TS: Record effective timestamp (for performance filtering)
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP AS (
-WITH COLD AS (
-    -- Identify cold chain medications by joining with reference table
-    SELECT
-        DISTINCT
-            DT.STORE_NBR,
-            DT.RX_NBR,
-            DT.FILL_NBR,
-            1 AS COLD_FLAG                                                  -- Binary flag for cold chain requirement
-    FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP DT
-    INNER JOIN CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL AS PF
-        ON DT.STORE_NBR = PF.STORE_NBR
-        AND DT.RX_NBR = PF.RX_NBR
-        AND DT.FILL_NBR = PF.FILL_NBR
-    INNER JOIN CORE_RX.CURATED_PRODUCT.DRUG AS DRG
-        ON PF.NDC = DRG.NDC                                                 -- National Drug Code linkage
-    INNER JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.NWB_COLD_CHAIN AS COLD
-        ON DRG.GCN = COLD.GCN                                              -- Generic Code Number linkage
-    WHERE PF.LAST_UPDATED_TS::DATE > DATE'2024-12-01'                     -- Recent fills only
-)
-SELECT 
-    DT1.*, 
-    COALESCE(COLD.COLD_FLAG, 0) AS COLD_FLAG                              -- Default to 0 if not cold chain
-FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP DT1
-LEFT JOIN COLD
-    ON COLD.STORE_NBR = DT1.STORE_NBR 
-    AND COLD.RX_NBR = DT1.RX_NBR
-    AND COLD.FILL_NBR = DT1.FILL_NBR
-);
+3. CORE_RX.CURATED_OUTREACH.RXC_OUTBOUND_CONTACT (Communication Data)
+   - RXC_OUTBOUND_CONTACT_ID: Outbound contact identifier (PK)
+   - RXC_PRESCRIPTION_FILL_ID: Link to prescription fills
+   - REC_EFF_TS: Record effective timestamp (for performance filtering)
+   - Communication details (contact type, disposition, timestamps, etc.)
 
--- =============================================================================
--- SECTION 5: DRUG CLASSIFICATION FLAGS - LARGE BAG MEDICATIONS
--- =============================================================================
--- Purpose: Identify prescriptions requiring large packaging (oversized items)
--- Business Impact: Large bag items may not fit through drive-thru windows,
---                 potentially causing delays or requiring in-store pickup
--- Data Source: Reference table REF_LARGE_BAG_CODE maintains list of oversized medications
+4. CORE_RX.CURATED_SCRIPT.RXC_ACTION_NOTE (Clinical Notes)
+   - RXC_ACTION_NOTE_ID: Action note identifier (PK)
+   - STORE_NBR: Store number
+   - RX_NBR: Prescription number
+   - FILL_NBR: Fill number
+   - REC_EFF_TS: Record effective timestamp (for performance filtering)
+   - Clinical note details (note text, category, pharmacist, etc.)
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP AS (
-WITH LARGE AS (
-    -- Identify medications requiring large bag packaging
-    SELECT 
-        DISTINCT
-            PF.STORE_NBR,
-            PF.RX_NBR,
-            PF.FILL_NBR,
-            1 AS LARGE_BAG_FLAG                                             -- Binary flag for large packaging
-    FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL AS PF
-    INNER JOIN CORE_RX.CURATED_PRODUCT.DRUG AS DRG
-        ON PF.NDC = DRG.NDC                                                 -- Link to drug master
-    INNER JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.REF_LARGE_BAG_CODE_08082025_SP AS LARGE
-        ON DRG.GCN = LARGE.GCN_CODE                                        -- Reference table for large items
-    WHERE PF.LAST_UPDATED_TS::DATE > DATE'2024-12-01'                     -- Recent prescription fills
-)
-SELECT 
-    DT2.*, 
-    COALESCE(LARGE.LARGE_BAG_FLAG, 0) AS LARGE_BAG_FLAG                   -- Default to 0 if not large bag
-FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP DT2
-LEFT JOIN LARGE
-    ON LARGE.STORE_NBR = DT2.STORE_NBR 
-    AND LARGE.RX_NBR = DT2.RX_NBR
-    AND LARGE.FILL_NBR = DT2.FILL_NBR
-);
+5. DL_RX_OPERATION.RX_OPS_SANDBOX.REF_QT_TRIAGE_ITEM_DESC_SP (Reference Data)
+   - TRIAGE_ITEM_TYPE_DETAIL_ID: Triage item type identifier (PK)
+   - TRIAGE_GROUP: High-level exception category
+   - TRIAGE_ITEM_TYPE_DETAIL_DSC: Detailed exception description
+   - QT_TYPE: Queue type classification
+   - Business rules and workflow routing information
 
--- =============================================================================
--- SECTION 6: DRUG CLASSIFICATION FLAGS - SPECIALTY MEDICATIONS
--- =============================================================================
--- Purpose: Identify specialty pharmaceutical products requiring special handling
--- Business Impact: Specialty drugs often require additional counseling, documentation,
---                 or special storage, potentially impacting drive-thru service times
--- Data Source: Reference table REF_SPECIALTY_DRUG_LIST maintains current specialty classifications
+6. CORE_FSSC.CURATED_CALENDAR.FISCAL_QUARTER (Calendar Dimension)
+   - START_DT: Fiscal quarter start date
+   - END_DT: Fiscal quarter end date
+   - FISCAL_QUARTER_NBR: Fiscal quarter number (20252 = Q2 FY2025)
+   - Additional fiscal calendar attributes
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP AS (
-WITH SPECIALTY AS (
-    -- Identify specialty pharmaceutical products
-    SELECT 
-        DISTINCT
-            PF.STORE_NBR,
-            PF.RX_NBR,
-            PF.FILL_NBR,
-            1 AS SPECIALTY_FLAG                                             -- Binary flag for specialty classification
-    FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL AS PF
-    INNER JOIN CORE_RX.CURATED_PRODUCT.DRUG AS DRG
-        ON PF.NDC = DRG.NDC                                                 -- Drug master linkage
-    INNER JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.REF_SPECIALTY_DRUG_LIST_08042025 AS SPECIAL
-        ON DRG.GCN = SPECIAL.GCN                                           -- Specialty drug reference
-    WHERE PF.LAST_UPDATED_TS::DATE > DATE'2024-12-01'                     -- Recent fills filter
-)
-SELECT 
-    DT3.*, 
-    COALESCE(SPECIALTY.SPECIALTY_FLAG, 0) AS SPECIALTY_FLAG               -- Default to 0 if not specialty
-FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP DT3
-LEFT JOIN SPECIALTY
-    ON SPECIALTY.STORE_NBR = DT3.STORE_NBR 
-    AND SPECIALTY.RX_NBR = DT3.RX_NBR
-    AND SPECIALTY.FILL_NBR = DT3.FILL_NBR
-);
+================================================================================
+OUTPUT TABLE AND FINAL FEATURES
+================================================================================
 
--- =============================================================================
--- SECTION 7: ANALYTICAL FLAG CREATION - TRANSACTION LEVEL AGGREGATIONS
--- =============================================================================
--- Purpose: Create analytical flags and metrics at the POS event level for reporting
--- This section aggregates prescription-level data up to transaction level and creates
--- business-friendly status classifications for operational analysis
+TABLE: DL_RX_OPERATION.RPHAI_DS_SANDBOX.QT_EXCEPTION_MANAGEMENT_SP
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED AS (
+RECORD GRAIN: One row per triage queue exception with enriched prescription keys
+TYPICAL VOLUME: 10,000-50,000 records per fiscal quarter (varies by network size)
+UPDATE FREQUENCY: Quarterly refresh aligned with fiscal reporting periods
 
--- -----------------------------------------------------------------------------
--- CTE 1: POS_EVENT_STATUS - Extract Key Fields for Aggregation
--- -----------------------------------------------------------------------------
--- Purpose: Simplify the dataset to key fields needed for transaction-level analysis
-WITH POS_EVENT_STATUS AS (
-    SELECT 
-        DISTINCT 
-            POS_EVENT_ID,                   -- Transaction identifier
-            STORE_RX_FILL_KEY,             -- Prescription identifier
-            LOCATION_CD,                    -- Drive-thru vs in-store
-            PROGRAM_CD,                     -- Message program type
-            FILL_LOCATION_CD,              -- Where prescription was filled
-            FIRST_ATTEMPT_ORDER_READY,     -- Ready on first attempt flag
-            SOLD_INDICATOR,                 -- Sale completion flag
-            MIX_INDICATOR,                  -- Compound prescription flag
-            COLD_FLAG,                      -- Cold chain medication flag
-            LARGE_BAG_FLAG,                 -- Large packaging flag
-            SPECIALTY_FLAG,                 -- Specialty medication flag
-            RTS_EVNT,                       -- Return to stock flag
-            OPPORTUNITY_DELIVERY_TS,        -- Message delivery timestamp
-            INDUCTION_DATE,                 -- Prescription entry timestamp
-            TRANSACTION_START_TS,           -- Customer arrival timestamp
-            TRANSACTION_END_TS              -- Transaction completion timestamp
-    FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP
-),
--- -----------------------------------------------------------------------------
--- CTE 2: SUMMARY - Transaction-Level Aggregations
--- -----------------------------------------------------------------------------
--- Purpose: Aggregate prescription-level data to transaction level for analysis
--- Creates counts of different prescription types and message interactions per transaction
-SUMMARY AS (
-    SELECT 
-        POS_EVENT_ID, 
-        LOCATION_CD,
-        
-        -- Core Transaction Metrics
-        COUNT(DISTINCT(STORE_RX_FILL_KEY)) AS TOTAL_SCRIPTS,               -- Total prescriptions in transaction
-        COUNT(DISTINCT(CASE 
-            WHEN FIRST_ATTEMPT_ORDER_READY IN ('Y') THEN STORE_RX_FILL_KEY 
-        END)) AS ORDER_READY_SCRIPT,                                       -- Scripts ready on first attempt
-        COUNT(DISTINCT(CASE
-            WHEN SOLD_INDICATOR = 1 THEN STORE_RX_FILL_KEY
-        END)) AS ORDER_SOLD_SCRIPT,                                        -- Scripts successfully sold
-        
-        -- Message Interaction Metrics (14-day window for message relevance)
-        COUNT(DISTINCT(CASE
-            WHEN PROGRAM_CD = 'RTOR' 
-                AND OPPORTUNITY_DELIVERY_TS < TRANSACTION_START_TS 
-                AND DATEDIFF('day', OPPORTUNITY_DELIVERY_TS, TRANSACTION_START_TS) <= 14  
-            THEN STORE_RX_FILL_KEY 
-        END)) AS SCRIPT_RTOR_MSG,                                          -- Real Time Order Ready messages
-        
-        COUNT(DISTINCT(CASE
-            WHEN PROGRAM_CD = 'RXR' 
-                AND OPPORTUNITY_DELIVERY_TS < TRANSACTION_START_TS 
-                AND DATEDIFF('day', OPPORTUNITY_DELIVERY_TS, TRANSACTION_START_TS) <= 14  
-            THEN STORE_RX_FILL_KEY 
-        END)) AS SCRIPT_RXR_MSG,                                           -- Rx Received messages
-        
-        COUNT(DISTINCT(CASE
-            WHEN PROGRAM_CD = 'ORRTS' 
-                AND OPPORTUNITY_DELIVERY_TS < TRANSACTION_START_TS 
-                AND DATEDIFF('day', OPPORTUNITY_DELIVERY_TS, TRANSACTION_START_TS) <= 14  
-            THEN STORE_RX_FILL_KEY 
-        END)) AS SCRIPT_ORRTS_MSG,                                         -- Order Ready Reminder messages
-        
-        COUNT(DISTINCT(CASE
-            WHEN PROGRAM_CD = 'OOR' 
-                AND OPPORTUNITY_DELIVERY_TS < TRANSACTION_START_TS 
-                AND DATEDIFF('day', OPPORTUNITY_DELIVERY_TS, TRANSACTION_START_TS) <= 14  
-            THEN STORE_RX_FILL_KEY 
-        END)) AS SCRIPT_ORR_MSG,                                           -- One Order Ready messages
-        
-        -- Special Handling Requirements
-        COUNT(DISTINCT(CASE
-            WHEN COLD_FLAG = 1 THEN STORE_RX_FILL_KEY 
-        END)) AS COLD_MED_SCRIPT,                                          -- Cold chain medications
-        
-        COUNT(DISTINCT(CASE
-            WHEN LARGE_BAG_FLAG = 1 THEN STORE_RX_FILL_KEY 
-        END)) AS LARGE_BAG_SCRIPT,                                         -- Large packaging requirements
-        
-        COUNT(DISTINCT(CASE
-            WHEN SPECIALTY_FLAG = 1 THEN STORE_RX_FILL_KEY 
-        END)) AS SPECIALTY_MED_SCRIPT,                                     -- Specialty medications
-        
-        COUNT(DISTINCT(CASE
-            WHEN MIX_INDICATOR = 1 THEN STORE_RX_FILL_KEY 
-        END)) AS MIX_MED_SCRIPT,                                           -- Compound prescriptions
-        
-        COUNT(DISTINCT(CASE
-            WHEN RTS_EVNT = 'Y' THEN STORE_RX_FILL_KEY 
-        END)) AS RTS_SCRIPT,                                               -- Return to stock events
-        
-        -- Transaction Timing Metrics
-        MIN(INDUCTION_DATE) AS OLDEST_INDUCTION_DATE_TS,                   -- Earliest prescription entry
-        MIN(TRANSACTION_START_TS) AS TRANSACTION_START_DATE_TS,            -- Transaction start time
-        MIN(TRANSACTION_END_TS) AS TRANSACTION_END_DATE_TS                 -- Transaction completion time
-        
-    FROM POS_EVENT_STATUS
-    GROUP BY POS_EVENT_ID, LOCATION_CD
-),
--- -----------------------------------------------------------------------------
--- CTE 3: FLAG_DATA - Business Status Classifications
--- -----------------------------------------------------------------------------
--- Purpose: Transform raw counts into business-friendly status classifications
--- Creates categorical flags for operational reporting and analysis
-FLAG_DATA AS (
-    SELECT 
-        POS_EVENT_ID,
-        LOCATION_CD,
-        TOTAL_SCRIPTS,
-        ORDER_SOLD_SCRIPT,
-        COLD_MED_SCRIPT,
-        LARGE_BAG_SCRIPT,
-        SPECIALTY_MED_SCRIPT,
-        MIX_MED_SCRIPT,
-        
-        -- Order Readiness Status Classification
-        CASE 
-            WHEN (TOTAL_SCRIPTS - ORDER_READY_SCRIPT) = 0 THEN 'COMPLETED' 
-            ELSE 'ONGOING' 
-        END AS POS_STATUS,
-        
-        -- Order Readiness Sub-Status (more granular view)
-        CASE 
-            WHEN POS_STATUS = 'ONGOING' THEN  
-                CASE 
-                    WHEN ORDER_READY_SCRIPT = 0 THEN 'FULL ORDER NOT READY' 
-                    ELSE 'PARTIAL ORDER NOT READY' 
-                END 
-            ELSE 'ORDER READY' 
-        END AS POS_SUB_STATUS,
-        
-        -- Sales Completion Status
-        CASE
-            WHEN ORDER_SOLD_SCRIPT = 0 THEN 'NO SCRIPT SOLD'
-            WHEN (TOTAL_SCRIPTS - ORDER_SOLD_SCRIPT) = 0 THEN 'ALL RX SOLD'
-            WHEN TOTAL_SCRIPTS > ORDER_SOLD_SCRIPT THEN 'PARTIAL RX SOLD'
-            ELSE 'UNKNOWN'
-        END AS SOLD_STATUS,
-        
-        -- Message Program Status Classifications (for operational insights)
-        CASE 
-            WHEN SCRIPT_RTOR_MSG = 0 THEN 'NO RTOR MESSAGE RECEIVED FOR ANY SCRIPT'
-            WHEN TOTAL_SCRIPTS = SCRIPT_RTOR_MSG THEN 'RTOR MESSAGE RECEIVED FOR ALL SCRIPT'
-            WHEN TOTAL_SCRIPTS > SCRIPT_RTOR_MSG THEN 'RTOR MESSAGE RECEIVED FOR PARTIAL SCRIPT'
-            ELSE 'UNKNOWN'
-        END AS RTOR_STATUS,
-        
-        CASE 
-            WHEN SCRIPT_RXR_MSG = 0 THEN 'NO RXR MESSAGE RECEIVED FOR ANY SCRIPT' 
-            WHEN TOTAL_SCRIPTS = SCRIPT_RXR_MSG THEN 'RXR MESSAGE RECEIVED FOR ALL SCRIPT'
-            WHEN TOTAL_SCRIPTS > SCRIPT_RXR_MSG THEN 'RXR MESSAGE RECEIVED FOR PARTIAL SCRIPT'
-            ELSE 'UNKNOWN'
-        END AS RXR_STATUS,
-        
-        CASE 
-            WHEN SCRIPT_ORRTS_MSG = 0 THEN 'NO ORRTS MESSAGE RECEIVED FOR ANY SCRIPT'
-            WHEN TOTAL_SCRIPTS = SCRIPT_ORRTS_MSG THEN 'ORRTS MESSAGE RECEIVED FOR ALL SCRIPT'
-            WHEN TOTAL_SCRIPTS > SCRIPT_ORRTS_MSG THEN 'ORRTS MESSAGE RECEIVED FOR PARTIAL SCRIPT'
-            ELSE 'UNKNOWN'
-        END AS ORRTS_STATUS,
-        
-        CASE 
-            WHEN SCRIPT_ORR_MSG = 0 THEN 'NO ORR MESSAGE RECEIVED FOR ANY SCRIPT'
-            WHEN TOTAL_SCRIPTS = SCRIPT_ORR_MSG THEN 'ORR MESSAGE RECEIVED FOR ALL SCRIPT'
-            WHEN TOTAL_SCRIPTS > SCRIPT_ORR_MSG THEN 'ORR MESSAGE RECEIVED FOR PARTIAL SCRIPT'
-            ELSE 'UNKNOWN'
-        END AS ORR_STATUS,
-        
-        -- Return to Stock Status
-        CASE 
-            WHEN RTS_SCRIPT = 0 THEN 'NO RTS SCRIPT INVOLVED'
-            WHEN TOTAL_SCRIPTS = RTS_SCRIPT THEN 'ALL RTS SCRIPT'
-            WHEN TOTAL_SCRIPTS > RTS_SCRIPT THEN 'PARTIAL RTS SCRIPT'
-            ELSE 'UNKNOWN'
-        END AS RTS_STATUS,
-        
-        -- Timestamp fields for timing analysis
-        OLDEST_INDUCTION_DATE_TS,
-        TRANSACTION_START_DATE_TS,
-        TRANSACTION_END_DATE_TS,
-        
-        -- Performance Metrics (in seconds for precision)
-        DATEDIFF('seconds', OLDEST_INDUCTION_DATE_TS, TRANSACTION_START_DATE_TS) AS INDUCTION_TRANSACTION_DIFF,
-        DATEDIFF('seconds', TRANSACTION_START_DATE_TS, TRANSACTION_END_DATE_TS) AS TRANSACTION_DURATION,
-        
-        -- Performance Deciles for relative ranking and analysis
-        NTILE(10) OVER (ORDER BY INDUCTION_TRANSACTION_DIFF) AS INDUCTION_TRANSACTION_DECILE,
-        NTILE(10) OVER (ORDER BY TRANSACTION_DURATION) AS TRANSACTION_DURATION_DECILE  
-        
-    FROM SUMMARY
-)
--- Final output with all analytical flags and classifications
-SELECT * FROM FLAG_DATA
-);
+Core Triage Fields (from QT.*):
+- All original triage queue fields including status, priority, timestamps
+- Exception handling workflow information
+- Assignment and resolution tracking data
 
--- =============================================================================
--- SECTION 8: ADDITIONAL METRIC - NUMERIC WAITING BIN CALCULATION
--- =============================================================================
--- Purpose: Calculate scripts that may be suitable for automated dispensing
--- Business Logic: Total scripts minus those requiring special handling
--- (cold chain, compounds, large bags) = candidates for numeric waiting bins
+Generated Primary Keys:
+- QT_KEY: Direct triage queue key (STORE_NBR-RX_NBR-RX_FILL_NBR)
+- PFI_KEY: Prescription fill interface key via RXC_PRESCRIPTION_FILL_ID
+- OBD_KEY: Outbound contact derived key via communication linkage
+- AN_KEY: Action note derived key via clinical note linkage
+- FINAL_KEY: Best available key using COALESCE hierarchy (Primary analytical key)
 
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED AS (
-    SELECT 
-        *,
-        -- Calculate prescriptions eligible for numeric waiting bin automation
-        -- Excludes prescriptions requiring special handling that prevents automation
-        (TOTAL_SCRIPTS - (COLD_MED_SCRIPT + MIX_MED_SCRIPT + LARGE_BAG_SCRIPT)) AS NUMERIC_WAITING_BIN_SCRIPT
-    FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED
-);
+Business Classification Fields:
+- TRIAGE_GROUP: High-level exception category (Clinical, Operational, Insurance, etc.)
+- TRIAGE_ITEM_TYPE_DETAIL_DSC: Specific exception description (detailed business rules)
+- QT_TYPE: Queue type classification (Priority, Standard, Clinical Review, etc.)
 
--- =============================================================================
--- SECTION 9: RE-EDIT AND RE-BILL ANALYSIS
--- =============================================================================
--- Purpose: Identify prescriptions that were re-edited or re-billed after initial processing
--- Business Context: Re-edits can indicate system issues, pricing corrections, or 
---                   insurance processing problems that impact customer experience
+Temporal Dimension:
+- FISCAL_QUARTER_NBR: Fiscal quarter for executive reporting (20252 = Q2 FY2025)
 
-CREATE OR REPLACE TEMPORARY TABLE ONR_DT AS (
+KEY BUSINESS APPLICATIONS:
+================================================================================
 
--- -----------------------------------------------------------------------------
--- CTE 1: DRIVE_THRU_DATA - Transaction Base Data (Simplified)
--- -----------------------------------------------------------------------------
-WITH DRIVE_THRU_DATA AS (
-    SELECT 
-        DISTINCT
-            POS_EVENT_ID,
-            LOCATION_CD, 
-            TRANSACTION_START_TS, 
-            TRANSACTION_END_TS
-    FROM SEM_RX.COMMON_RX.POS_TS_ALL_TRANSACTION_DETAIL
-    WHERE (LOCATION_CD LIKE '%DRIVE%' OR LOCATION_CD LIKE '%STORE%')
-        AND TRANSACTION_START_TS BETWEEN $START_DATE AND $END_DATE
-),
+OPERATIONAL ANALYTICS:
+- Exception resolution time analysis by triage group and type
+- Workload distribution and capacity planning
+- Staff productivity and efficiency metrics
+- Process bottleneck identification
 
--- -----------------------------------------------------------------------------
--- CTE 2: ONR_ALL_TABLE - Order and Readiness Data with Will-Call Bin Flag
--- -----------------------------------------------------------------------------
--- Purpose: Extract ONR data with special focus on Will-Call Bin (WB) location
--- WB_FLAG indicates prescription is in will-call bin (ready for pickup)
-ONR_ALL_TABLE AS (
-    SELECT
-        DISTINCT
-            POS_EVENT_ID,
-            RXC_PATIENT_ID,                                               -- Patient identifier for tracking
-            STORE_NBR,
-            NEW_RX_NBR,
-            NEW_FILL_NBR,
-            RTS_EVNT,                                                     -- Return to stock event
-            FIRST_ATTEMPT_ORDER_READY,
-            CASE WHEN FILL_LOCATION_CD = 'WB' THEN 1 ELSE 0 END AS WB_FLAG -- Will-call bin indicator
-    FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
-    WHERE TRANSACTION_START_TS BETWEEN $START_DATE AND $END_DATE
-),
+QUALITY MANAGEMENT:
+- Exception root cause analysis using prescription linkages
+- Repeat exception pattern identification
+- Clinical intervention effectiveness measurement
+- Customer communication impact assessment
 
--- -----------------------------------------------------------------------------
--- CTE 3: JOIN_TABLE - Combine Transaction and ONR Data
--- -----------------------------------------------------------------------------
-JOIN_TABLE AS (
-    SELECT
-        DISTINCT
-            DT.POS_EVENT_ID,
-            DT.LOCATION_CD,
-            DT.TRANSACTION_START_TS,
-            DT.TRANSACTION_END_TS,
-            ONR.RXC_PATIENT_ID,
-            ONR.STORE_NBR,
-            ONR.NEW_RX_NBR,
-            ONR.NEW_FILL_NBR,
-            CONCAT(ONR.STORE_NBR,'-',ONR.NEW_RX_NBR,'-',ONR.NEW_FILL_NBR) AS RX_KEY,
-            ONR.RTS_EVNT,
-            ONR.FIRST_ATTEMPT_ORDER_READY,
-            ONR.WB_FLAG
-    FROM DRIVE_THRU_DATA DT
-    INNER JOIN ONR_ALL_TABLE ONR
-        ON DT.POS_EVENT_ID = ONR.POS_EVENT_ID
-)
+EXECUTIVE REPORTING:
+- Quarterly exception volume and trend analysis
+- Store-level exception management performance
+- Network-wide process improvement ROI
+- Regulatory compliance and audit support
 
--- -----------------------------------------------------------------------------
--- FINAL SELECT: Re-edit Detection Logic with Window Functions
--- -----------------------------------------------------------------------------
--- Purpose: Use window functions to detect re-edit patterns in prescription processing
-SELECT
-    DISTINCT
-    *,
-    -- Order ready flag based on will-call bin status
-    CASE WHEN WB_FLAG = 1 THEN 1 ELSE 0 END AS ORDER_READY_FLAG,
-    
-    -- Count occurrences of same prescription in transaction history
-    COUNT(RX_KEY) OVER (
-        PARTITION BY RX_KEY 
-        ORDER BY TRANSACTION_START_TS
-    ) AS COUNT_RX,
-    
-    -- Count POS events for same patient (helps identify return customers)
-    COUNT(RXC_PATIENT_ID) OVER (
-        PARTITION BY RXC_PATIENT_ID 
-        ORDER BY TRANSACTION_START_TS
-    ) AS COUNT_POS,
-    
-    -- Look ahead to next attempt for same prescription
-    LEAD(WB_FLAG) OVER (
-        PARTITION BY RX_KEY 
-        ORDER BY TRANSACTION_START_TS
-    ) AS NEXT_ATTEMPT_WB_FLAG,
-    
-    LEAD(TRANSACTION_START_TS) OVER (
-        PARTITION BY RX_KEY 
-        ORDER BY TRANSACTION_START_TS
-    ) AS NEXT_ATTEMPT_TS,
-    
-    LEAD(RTS_EVNT) OVER (
-        PARTITION BY RX_KEY 
-        ORDER BY TRANSACTION_START_TS
-    ) AS NEXT_RTS_FLAG,
-    
-    -- Re-edit Detection Logic
-    -- Identifies prescriptions that were ready, picked up, but then had subsequent processing
-    CASE WHEN 
-        COUNT_RX = 1                        -- First occurrence of this prescription
-        AND ORDER_READY_FLAG = 1            -- Prescription was ready (in will-call bin)
-        AND NEXT_ATTEMPT_TS IS NOT NULL     -- There was a subsequent transaction
-        AND RTS_EVNT = 'N'                  -- Not returned to stock
-        THEN 1 
-        ELSE 0 
-    END AS REEDIT_FLAG
-    
-FROM JOIN_TABLE
-);
+DATA QUALITY CONSIDERATIONS:
+- Multiple linkage methods maximize prescription key coverage (~95%+ expected)
+- 12-month lookback balances performance with data completeness
+- DISTINCT clause handles potential many-to-many relationships
+- COALESCE hierarchy ensures consistent primary key assignment
+- Fiscal quarter filtering focuses analysis on relevant business periods
 
--- =============================================================================
--- SECTION 10: FINAL TABLE UPDATE - RE-EDIT FLAG INTEGRATION
--- =============================================================================
--- Purpose: Add re-edit/re-bill classification flags to the final analytical dataset
--- This provides operational insights into prescription processing quality and efficiency
-
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED AS (
-
--- -----------------------------------------------------------------------------
--- CTE 1: GROUP_DATA - Aggregate Re-edit Metrics by Transaction
--- -----------------------------------------------------------------------------
-WITH GROUP_DATA AS (
-    SELECT
-        POS_EVENT_ID, 
-        COUNT(DISTINCT(RX_KEY)) AS TOTAL_SCRIPT,                          -- Total prescriptions in transaction
-        COUNT(DISTINCT(CASE 
-            WHEN REEDIT_FLAG = 1 THEN RX_KEY 
-        END)) AS REEDIT_SCRIPT                                            -- Prescriptions requiring re-edits
-    FROM ONR_DT
-    GROUP BY POS_EVENT_ID
-),
-
--- -----------------------------------------------------------------------------
--- CTE 2: FLAG_DATA - Re-edit Status Classification
--- -----------------------------------------------------------------------------
--- Purpose: Create business-friendly classifications for re-edit patterns
-FLAG_DATA AS (
-    SELECT
-        POS_EVENT_ID,
-        CASE 
-            WHEN REEDIT_SCRIPT = 0 THEN 'NO REEDIT SCRIPT'               -- No re-edits required
-            WHEN REEDIT_SCRIPT < TOTAL_SCRIPT THEN 'PARTIAL REEDIT SCRIPT' -- Some prescriptions re-edited
-            WHEN REEDIT_SCRIPT = TOTAL_SCRIPT THEN 'ALL REEDIT SCRIPT'   -- All prescriptions re-edited
-            ELSE 'UNKNOWN'
-        END AS REEDIT_REBILL_FLAG
-    FROM GROUP_DATA
-)
-
--- -----------------------------------------------------------------------------
--- FINAL OUTPUT: Comprehensive Drive-Thru Analysis with Re-edit Flags
--- -----------------------------------------------------------------------------
--- Purpose: Combine all analytical dimensions into final reporting table
--- Includes transaction patterns, drug classifications, messaging effectiveness, 
--- and processing quality metrics
-SELECT
-    A.*,                                                                  -- All original analytical fields
-    B.REEDIT_REBILL_FLAG                                                 -- Re-edit pattern classification
-FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED A
-LEFT JOIN FLAG_DATA B
-    ON A.POS_EVENT_ID = B.POS_EVENT_ID
-);
-
-/*=============================================================================
- * INPUT TABLES AND COLUMNS DOCUMENTATION
- *=============================================================================
- * 
- * The following section documents all input tables and their relevant columns
- * used in this analysis script.
- *
- *============================================================================*/
-
--- CORE CALENDAR AND TIME DIMENSION TABLES
--- -----------------------------------------------------------------------------
--- CORE_FSSC.CURATED_CALENDAR.FISCAL_MONTH
---   - END_WEEK_NBR: Week number for fiscal period boundaries
---   - END_DT: End date of fiscal period
-
--- CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK  
---   - FISCAL_YEAR_NBR: Fiscal year identifier
---   - FISCAL_MONTH_NBR: Fiscal month identifier  
---   - FISCAL_WEEK_NBR: Fiscal week identifier
---   - START_DT: Week start date
---   - END_DT: Week end date
-
--- POS TRANSACTION DATA TABLES
--- -----------------------------------------------------------------------------
--- SEM_RX.COMMON_RX.POS_TS_ALL_TRANSACTION_DETAIL
---   - POS_EVENT_ID: Primary transaction event identifier
---   - TRANSACTION_ID: Secondary transaction identifier (has nulls)
---   - LOCATION_CD: Transaction location (DRIVE/STORE patterns)
---   - STORE_NBR: Store number identifier
---   - REGISTER_NBR: POS register identifier
---   - TRANSACTION_NBR: Sequential transaction number
---   - TRANSACTION_START_TS: Customer interaction start timestamp
---   - TRANSACTION_END_TS: Transaction completion timestamp
-
--- ORDER AND READINESS TABLES
--- -----------------------------------------------------------------------------
--- APP_OMNIRX.OMNI_DL.ONR_FINAL_TBL
---   - POS_EVENT_ID: Links to POS transaction
---   - STORE_NBR: Store identifier
---   - NEW_RX_NBR: Prescription number
---   - NEW_FILL_NBR: Fill sequence number
---   - PROMISE_TS: Promised ready timestamp
---   - FIRST_ATTEMPT_ORDER_READY: First attempt success flag (Y/N)
---   - ONR_BFR_PRMS: Order ready before promise flag
---   - RTS_EVNT: Return to stock event flag
---   - FILL_LOCATION_CD: Fill location code (WB=Will-Call Bin)
---   - TRANSACTION_START_TS: Used for time filtering
-
--- DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
---   - POS_EVENT_ID: Transaction event identifier
---   - RXC_PATIENT_ID: Patient identifier
---   - STORE_NBR: Store identifier
---   - NEW_RX_NBR: Prescription number
---   - NEW_FILL_NBR: Fill sequence number
---   - RTS_EVNT: Return to stock event
---   - FIRST_ATTEMPT_ORDER_READY: Order readiness flag
---   - FILL_LOCATION_CD: Fill location code
---   - TRANSACTION_START_TS: Transaction timing
-
--- PRESCRIPTION AND DRUG DATA TABLES  
--- -----------------------------------------------------------------------------
--- CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL
---   - STORE_NBR: Store identifier
---   - RX_NBR: Prescription number
---   - FILL_NBR: Fill sequence number
---   - POS_TXN_TS: Point of sale timestamp
---   - PRESCRIPTION_FILL_TS: Fill completion timestamp
---   - RX_ORIGIN_CD: Prescription origin (Written, Telephone, Electronic, Fax, Internal Transfer)
---   - FILL_STATUS_CD: Fill status (7=Sold)
---   - SOURCE_CD: Source system identifier
---   - COMPOUND_IND: Compound prescription indicator (Y/N)
---   - NDC: National Drug Code for drug linkage
---   - LAST_UPDATED_TS: Record update timestamp
-
--- CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_ACTIVITY
---   - RXC_PRESCRIPTION_FILL_ID: Links to prescription fill
---   - REC_EFF_TS: Activity effective timestamp
---   - ACTIVITY_CD: Activity code (4=QV2 completion)
-
--- CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF
---   - RXC_PRESCRIPTION_FILL_ID: Prescription fill identifier
---   - STORE_NBR: Store identifier
---   - RX_NBR: Prescription number
---   - FILL_NBR: Fill sequence number
-
--- CORE_RX.CURATED_PRODUCT.DRUG
---   - NDC: National Drug Code (links to prescription)
---   - GCN: Generic Code Number (links to reference tables)
-
--- MESSAGING AND OUTREACH TABLES
--- -----------------------------------------------------------------------------
--- CORE_RX.CURATED_OUTREACH.OPPORTUNITY_COLLATION
---   - STORE_NBR: Store identifier
---   - RX_NBR: Prescription number  
---   - FILL_NBR: Fill sequence number
---   - PROGRAM_CD: Message program type code
---   - OPPORTUNITY_ID: Unique message identifier
---   - OPPORTUNITY_DELIVERY_TS: Message delivery timestamp
---   - OPPORTUNITY_EXPIRY_TS: Message expiration timestamp
---   - REC_EFF_TS: Record effective timestamp
-
--- APP_OMNIRX.OMNI_DL.SMS_DL
---   - OPPORTUNITY_ID: Links to opportunity
---   - SMS_VERBIAGE: Actual message text content
---   - SMS_TIMESTAMP: Message timestamp
---   - SMS_TYPE: Message type (OUT-SMS for outbound)
-
--- DRUG CLASSIFICATION REFERENCE TABLES
--- -----------------------------------------------------------------------------
--- DL_RX_OPERATION.RX_OPS_SANDBOX.NWB_COLD_CHAIN
---   - GCN: Generic Code Number for cold chain drugs
-
--- DL_RX_OPERATION.RX_OPS_SANDBOX.REF_LARGE_BAG_CODE_08082025_SP
---   - GCN_CODE: Generic Code Number for large bag items
-
--- DL_RX_OPERATION.RX_OPS_SANDBOX.REF_SPECIALTY_DRUG_LIST_08042025
---   - GCN: Generic Code Number for specialty drugs
-
-/*=============================================================================
- * OUTPUT TABLES AND COLUMNS DOCUMENTATION
- *=============================================================================
- * 
- * The following section documents all output tables created by this script
- * and their complete column definitions.
- *
- *============================================================================*/
-
--- FINAL OUTPUT TABLES CREATED
--- -----------------------------------------------------------------------------
-
--- 1. DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP
--- Purpose: Detailed prescription-level data with all enrichments
--- Grain: One row per prescription per transaction
--- Columns:
---   TIME DIMENSIONS:
---     - FISCAL_YEAR_NBR: Fiscal year for aggregation
---     - FISCAL_MONTH_NBR: Fiscal month for trending
---     - FISCAL_WEEK_NBR: Fiscal week for detailed analysis
---   
---   CORE IDENTIFIERS:
---     - STORE_NBR: Store number
---     - RX_NBR: Prescription number  
---     - FILL_NBR: Fill sequence number
---     - POS_EVENT_ID: POS transaction identifier
---     - TRANSACTION_ID: Secondary transaction ID
---     - OPPORTUNITY_ID: Messaging opportunity ID
---   
---   PROCESS TIMESTAMPS:
---     - INDUCTION_DATE: Prescription entry into system
---     - PRESCRIPTION_FILL_TS: Fill completion timestamp
---     - QV2_DATE: Quality verification completion
---     - POS_TXN_TS: Point of sale timestamp
---     - TRANSACTION_START_TS: Customer interaction start
---     - TRANSACTION_END_TS: Customer interaction end
---     - PROMISE_TS: Promised ready time
---     - OPPORTUNITY_DELIVERY_TS: Message delivery time
---     - OPPORTUNITY_EXPIRY_TS: Message expiration time
---   
---   OPERATIONAL INDICATORS:
---     - FIRST_ATTEMPT_ORDER_READY: First attempt success flag
---     - ONR_BFR_PRMS: Ready before promise flag
---     - FILL_LOCATION_CD: Fill location code
---     - RTS_EVNT: Return to stock event
---     - FILL_STATUS_CD: Fill status (7=sold)
---     - SOURCE_CD: Source system
---     - SOLD_INDICATOR: Sale completion flag (0/1)
---     - MIX_INDICATOR: Compound prescription flag (0/1)
---     - RX_ORIGIN_CD: Prescription origin method
---   
---   CUSTOMER COMMUNICATION:
---     - PROGRAM_CD: Message program type code
---     - PROGRAM_DESC: Human-readable program description
---     - SMS_VERBIAGE: Actual message content
---   
---   LOCATION AND CONTEXT:
---     - LOCATION_CD: Drive-thru vs in-store
---   
---   COMPOSITE BUSINESS KEYS:
---     - STORE_RX_FILL_KEY: STORE_NBR-RX_NBR-FILL_NBR
---     - POS_STORE_RX_FILL_KEY: POS_EVENT_ID|STORE_NBR-RX_NBR-FILL_NBR
---     - OPP_POS_STORE_RX_FILL_KEY: OPPORTUNITY_ID|POS_EVENT_ID|STORE_NBR-RX_NBR-FILL_NBR
---   
---   TIME DIFFERENCE CALCULATIONS:
---     - OPPR_TRNS_DIFF: Minutes between message delivery and transaction start
---     - DAYS_TO_TRANSACT_DURATION: Minutes from induction to transaction start
---   
---   DRUG CLASSIFICATION FLAGS:
---     - COLD_FLAG: Cold chain medication indicator (0/1)
---     - LARGE_BAG_FLAG: Large packaging requirement (0/1) 
---     - SPECIALTY_FLAG: Specialty medication indicator (0/1)
-
--- 2. DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED
--- Purpose: Transaction-level analytical flags and business classifications
--- Grain: One row per POS transaction
--- Columns:
---   CORE IDENTIFIERS:
---     - POS_EVENT_ID: Transaction identifier
---     - LOCATION_CD: Drive-thru vs in-store location
---   
---   TRANSACTION METRICS:
---     - TOTAL_SCRIPTS: Total prescriptions in transaction
---     - ORDER_SOLD_SCRIPT: Number of prescriptions sold
---     - COLD_MED_SCRIPT: Number of cold chain prescriptions
---     - LARGE_BAG_SCRIPT: Number of large bag prescriptions  
---     - SPECIALTY_MED_SCRIPT: Number of specialty prescriptions
---     - MIX_MED_SCRIPT: Number of compound prescriptions
---   
---   BUSINESS STATUS CLASSIFICATIONS:
---     - POS_STATUS: 'COMPLETED' or 'ONGOING' order status
---     - POS_SUB_STATUS: Detailed readiness status
---       * 'ORDER READY'
---       * 'FULL ORDER NOT READY' 
---       * 'PARTIAL ORDER NOT READY'
---     - SOLD_STATUS: Sales completion status
---       * 'NO SCRIPT SOLD'
---       * 'ALL RX SOLD'
---       * 'PARTIAL RX SOLD'
---   
---   MESSAGE PROGRAM STATUS:
---     - RTOR_STATUS: Real Time Order Ready message status
---     - RXR_STATUS: Rx Received message status  
---     - ORRTS_STATUS: Order Ready Reminder message status
---     - ORR_STATUS: One Order Ready message status
---     Values: 'NO [PROGRAM] MESSAGE RECEIVED FOR ANY SCRIPT',
---             '[PROGRAM] MESSAGE RECEIVED FOR ALL SCRIPT',
---             '[PROGRAM] MESSAGE RECEIVED FOR PARTIAL SCRIPT'
---   
---   OPERATIONAL STATUS:
---     - RTS_STATUS: Return to stock status
---       * 'NO RTS SCRIPT INVOLVED'
---       * 'ALL RTS SCRIPT'  
---       * 'PARTIAL RTS SCRIPT'
---     - REEDIT_REBILL_FLAG: Re-edit pattern classification
---       * 'NO REEDIT SCRIPT'
---       * 'PARTIAL REEDIT SCRIPT'
---       * 'ALL REEDIT SCRIPT'
---   
---   TIMING ANALYSIS:
---     - OLDEST_INDUCTION_DATE_TS: Earliest prescription entry time
---     - TRANSACTION_START_DATE_TS: Transaction start time
---     - TRANSACTION_END_DATE_TS: Transaction completion time
---     - INDUCTION_TRANSACTION_DIFF: Seconds from induction to transaction
---     - TRANSACTION_DURATION: Transaction duration in seconds
---     - INDUCTION_TRANSACTION_DECILE: Performance decile (1-10)
---     - TRANSACTION_DURATION_DECILE: Duration decile (1-10)
---   
---   AUTOMATION SUITABILITY:
---     - NUMERIC_WAITING_BIN_SCRIPT: Scripts eligible for automated dispensing
---       (Total scripts minus cold chain, compound, and large bag requirements)
-
--- TEMPORARY TABLES CREATED (DROPPED AUTOMATICALLY)
--- -----------------------------------------------------------------------------
--- FISCAL_WEEK_FILTERED: Filtered fiscal week dimension for date boundaries
--- ONR_DT: Re-edit analysis intermediate results
-
-/*=============================================================================
- * END OF DRIVE-THRU ANALYSIS SCRIPT DOCUMENTATION
- *=============================================================================
- * 
- * Key Analytical Dimensions:
- *   - Time Performance: Induction to pickup duration, transaction times
- *   - Drug Classifications: Cold chain, large bag, specialty, compound flags
- *   - Messaging Effectiveness: Program codes and delivery timing analysis
- *   - Operational Quality: Re-edit detection, order readiness patterns
- *   - Customer Experience: Drive-thru vs in-store transaction patterns
- *
- * Performance Optimization Opportunities:
- *   - Consolidate multiple table updates into single CTEs
- *   - Include drug classification joins in main query
- *   - Consider partitioning strategies for large datasets
- *   - Index optimization on POS_EVENT_ID and composite keys
- *============================================================================*/
+================================================================================
+*/
