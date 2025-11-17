@@ -1,199 +1,1090 @@
 /*
 ================================================================================
-EXCEPTION MANAGEMENT PRIMARY KEY LOGIC - TRIAGE QUEUE ANALYSIS
+ONR (Order Not Ready) Analysis - Transaction Data Pipeline
 ================================================================================
 
 PURPOSE:
-This script creates a comprehensive view of Triage Queue (QT) instances by assigning
-Store-Rx-Fill composite keys through multiple data source linkage methods. It enables
-analysis of pharmacy exception management processes and workflow efficiency.
+This script creates a comprehensive analysis of Order Not Ready (ONR) events 
+for prescriptions, focusing on patient search activities and their relationship
+to prescription fills, holds, prior authorizations, and other disposition codes.
 
 BUSINESS CONTEXT:
-- Triage Queue contains pharmacy exceptions requiring manual intervention
-- Exceptions may relate to prescription fills, outbound contacts, or action notes
-- Multiple linking methods ensure maximum data coverage and completeness
-- Supports operational analytics for exception resolution and process improvement
+When customers visit pharmacies, they may search for their prescriptions only to
+find them "not ready" (ONR). This analysis tracks those events, particularly when
+they occur before the promised ready time, which indicates potential service gaps
+or customer experience issues.
 
-KEY FUNCTIONALITY:
-1. Links triage queue items to prescription fills via multiple pathways
-2. Creates composite keys for unique identification across systems
-3. Adds triage classification and fiscal reporting dimensions
-4. Enables comprehensive exception management analysis
+MAIN OBJECTIVES:
+1. Track patient search events that occur before promise time (ONR before promise)
+2. Analyze prescription fills, returns to stock (RTS), and various disposition codes
+3. Identify immunization vs non-immunization prescriptions
+4. Connect patient search activities to subsequent prescription actions
+5. Provide insights into RxTie patient profiles and fiscal week reporting
+6. Enable operational improvements and customer experience optimization
 
-LINKING METHODOLOGY HIERARCHY:
-1. Direct QT key (if store/rx/fill available in triage queue)
-2. Prescription Fill Interface (PFI) key via RXC_PRESCRIPTION_FILL_ID
-3. Outbound Contact (OBD) key via prescription fill linkage
-4. Action Note (AN) key via RXC_ACTION_NOTE_ID
-5. COALESCE prioritizes available keys for maximum coverage
+KEY BUSINESS METRICS:
+- ONR_BFR_PRMS: Primary KPI - Patient searched before prescription promise time
+- RTS_EVNT: Prescriptions returned to stock before customer arrival  
+- FIRST_ATTEMPT_ORDER_READY: Service efficiency indicator
+- IMZ_FLG: Immunization prescription classification
+- TIE_FLG: RxTie loyalty program member identification
 
-OUTPUT: Analytical dataset for exception management reporting and process optimization
+PROCESS FLOW:
+1. Extract prescription fill data (current + historical, 2022-2024)
+2. Identify patient search POS events (button press events)
+3. Match patient searches to prescriptions with various disposition codes
+4. Apply complex business logic for holds, prior authorizations, and prescription requests
+5. Calculate ONR before promise metrics with timing validations
+6. Add RxTie and fiscal week dimensions for reporting
+7. Create final analytical dataset with deduplication logic
+
+DATA QUALITY CONSIDERATIONS:
+- Uses DISTINCT to handle potential duplicates from UNION operations
+- Implements row numbering for deduplication where needed
+- Validates timing relationships (search before fill, within promise windows)
+- Filters out invalid records (NULL patient IDs, invalid status codes)
+
+PERFORMANCE NOTES:
+- Uses temporary tables to break down complex logic into manageable steps
+- Leverages indexes on join keys (store_nbr, rx_nbr, patient_id, timestamps)
+- Date filtering applied early to reduce data volume
+- Window functions used for ranking and deduplication
 ================================================================================
 */
 
--- ASSIGN A STORE-RX-FILL KEY TO ALL QT INSTANCES BASED ON DIFFERENT METHODS
-CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.QT_EXCEPTION_MANAGEMENT_SP
-AS (
-WITH TRIAGE_DATA AS (
+-- Step 1: Create base prescription fill dataset with immunization flag
+-- 
+-- PURPOSE: Combines current and historical prescription fills, marking immunization NDCs
+-- 
+-- BUSINESS LOGIC:
+-- - Merges active prescription fills (2024+) with historical data (2022+)
+-- - Flags immunization prescriptions based on NDC configuration
+-- - Provides comprehensive view of prescription activity for analysis
+-- 
+-- DATA SOURCES:
+-- - PRESCRIPTION_FILL: Current active fills and status changes
+-- - PRESCRIPTION_FILL_HISTORY: Historical prescription data for trend analysis
+-- - RXC_IMMUNIZATION_NDC_CONFIG: Authoritative list of immunization NDCs
+--
+-- EXPECTED OUTPUT: ~Million+ records covering 3+ years of prescription activity
+CREATE OR REPLACE TEMPORARY TABLE ONR_RXFILL_DL AS
+SELECT
+DISTINCT a.*,
+CASE WHEN b.ndc is NOT NULL THEN 'IMZ' else 'Non-IMZ' end as IMZ_FLG
+FROM
+(
+    -- Current prescription fills (from 2024-07-01)
     SELECT
-        DISTINCT
-            QT.*,                                                          -- All triage queue fields
-            -- PRIMARY KEY GENERATION: Create composite keys from different data sources
-            CONCAT(QT.STORE_NBR, '-', QT.RX_NBR, '-', QT.RX_FILL_NBR) AS QT_KEY,     -- Method 1: Direct from triage queue
-            CONCAT(X1.STORE_NBR, '-', X1.RX_NBR, '-', X1.FILL_NBR) AS PFI_KEY,       -- Method 2: Via prescription fill interface
-            CONCAT(X2.STORE_NBR, '-', X2.RX_NBR, '-', X2.FILL_NBR) AS OBD_KEY,       -- Method 3: Via outbound contact linkage
-            CONCAT(AN.STORE_NBR, '-', AN.RX_NBR, '-', AN.FILL_NBR) AS AN_KEY,        -- Method 4: Via action note linkage
-            
-            -- HIERARCHICAL KEY SELECTION: Choose best available key using priority order
-            COALESCE(QT_KEY, PFI_KEY, OBD_KEY, AN_KEY) AS FINAL_KEY,
-            
-            -- BUSINESS CLASSIFICATION: Add triage metadata for analysis
-            DTL.TRIAGE_GROUP,                   -- High-level exception category
-            DTL.TRIAGE_ITEM_TYPE_DETAIL_DSC,    -- Detailed exception description
-            DTL.QT_TYPE,                        -- Queue type classification
-            
-            -- TEMPORAL DIMENSION: Add fiscal reporting period
-            FQ.FISCAL_QUARTER_NBR               -- Fiscal quarter for executive reporting
+    RXC_PATIENT_ID,          -- Patient identifier
+    RX_NBR,                  -- Prescription number
+    STORE_NBR,               -- Store number
+    FILL_NBR,                -- Fill number (0 = original, 1+ = refills)
+    PRESCRIPTION_FILL_TS,    -- Fill timestamp
+    RETURN_TO_STOCK_TS,      -- Return to stock timestamp
+    FILL_STATUS_CD,          -- Fill status code
+    REC_EFF_TS,              -- Record effective timestamp
+    PROMISE_TS,              -- Promise time to patient
+    NDC,                     -- National Drug Code
+    VERIFIED_TS,             -- Verification timestamp
+    PICKUP_TS                -- Pickup timestamp
     FROM
-        CORE_RX.CURATED_SCRIPT.TRIAGE_QUEUE QT  -- Base triage queue data
-    -- METHOD 1 LINKAGE: Direct prescription fill reference from triage queue
-    LEFT JOIN
-        CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF X1
-     ON QT.RXC_PRESECRIPTION_FILL_ID = X1.RXC_PRESCRIPTION_FILL_ID  -- Direct prescription fill link
-     AND X1.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)          -- Performance filter: 12-month lookback
-    -- METHOD 2 LINKAGE: Via outbound contact system (for communication-related exceptions)
-    LEFT JOIN
-        CORE_RX.CURATED_OUTREACH.RXC_OUTBOUND_CONTACT OBD
-     ON QT.OUTBOUND_CONTACT_ID = OBD.RXC_OUTBOUND_CONTACT_ID        -- Link triage to outbound contact
-     AND OBD.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)         -- Performance filter: 12-month lookback
-    LEFT JOIN
-        CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF X2
-     ON OBD.RXC_PRESCRIPTION_FILL_ID = X2.RXC_PRESCRIPTION_FILL_ID  -- Link outbound contact to prescription
-     AND X2.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)          -- Performance filter: 12-month lookback
-    -- METHOD 3 LINKAGE: Via action notes (for clinical/procedural exceptions)
-    LEFT JOIN
-        CORE_RX.CURATED_SCRIPT.RXC_ACTION_NOTE AN
-     ON AN.RXC_ACTION_NOTE_ID = QT.ACTION_NOTE_ID                   -- Link triage to action notes
-     AND AN.REC_EFF_TS > DATEADD(MONTH, -12, $START_DATE)          -- Performance filter: 12-month lookback
-    -- BUSINESS METADATA ENRICHMENT: Add triage classification details
-    LEFT JOIN DL_RX_OPERATION.RX_OPS_SANDBOX.REF_QT_TRIAGE_ITEM_DESC_SP DTL
-     ON  QT.TRIAGE_ITEM_TYPE_DETAIL_ID = DTL.TRIAGE_ITEM_TYPE_DETAIL_ID  -- Link to triage item descriptions
-    
-    -- FISCAL CALENDAR INTEGRATION: Add reporting period dimension
-    INNER JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_QUARTER FQ
-     ON QT.DISPOSITION_TS BETWEEN FQ.START_DT AND FQ.END_DT          -- Match disposition date to fiscal quarter
-     AND FQ.FISCAL_QUARTER_NBR IN (20252)                           -- Filter to specific fiscal quarter (Q2 FY2025)
-        )
--- FINAL OUTPUT: Complete triage dataset with all linkage methods and business dimensions
-SELECT * FROM TRIAGE_DATA);
+    CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL
+    WHERE
+    REC_EFF_TS >= TO_DATE('2024-07-01')
+UNION
+    -- Historical prescription fills (from 2022-07-01)
+    SELECT
+    RXC_PATIENT_ID,
+    RX_NBR,
+    STORE_NBR,
+    FILL_NBR,
+    PRESCRIPTION_FILL_TS,
+    RETURN_TO_STOCK_TS,
+    FILL_STATUS_CD,
+    REC_EFF_TS,
+    PROMISE_TS,
+    NDC,
+    VERIFIED_TS,
+    PICKUP_TS
+    FROM
+    CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_HISTORY
+    WHERE
+    REC_EFF_TS >= TO_DATE('2022-07-01')
+) a
+LEFT JOIN (
+    -- Immunization NDC lookup to flag immunization prescriptions
+    select
+    distinct NDC
+    from
+    CORE_RX.CURATED_PRODUCT.RXC_IMMUNIZATION_NDC_CONFIG
+) b on a.ndc = b.ndc;
+
+-- Step 2: Extract patient search POS events and link to prescriptions
+--
+-- PURPOSE: Captures patient search button presses and associates them with prescription details
+--
+-- BUSINESS LOGIC:
+-- - Identifies when customers/staff search for patient prescriptions at POS
+-- - Links search events to specific prescriptions and their current status
+-- - Calculates sequence numbers for pickup vs central fill workflows
+-- - Filters to only meaningful search events with valid patient associations
+--
+-- KEY FILTERS:
+-- - Only 'button_pressed' events (actual user interactions)
+-- - Patient search screens only ('patient_search', 'patient-search')
+-- - Must have valid patient ID (excludes test/system transactions)
+-- - Excludes hyphenated 'patient-search' to avoid duplicates
+--
+-- SEQUENCE LOGIC:
+-- - seq_num = 2: Central fill locations (*-C suffix)
+-- - seq_num = 1: Pickup locations (*-P suffix) 
+-- - seq_num = 0: Standard/other locations
+--
+-- EXPECTED OUTPUT: 100K+ patient search events per month
+CREATE OR REPLACE TEMPORARY TABLE ONR_POS_TBL AS
+ select
+   distinct a.pos_event_id,     -- Unique POS event identifier
+   b.store_nbr,                 -- Store number
+   b.transaction_start_ts,      -- Transaction start timestamp
+   b.transaction_end_ts,        -- Transaction end timestamp
+   c.rxc_patient_id,            -- Patient identifier
+   c.rx_nbr,                    -- Prescription number
+   c.rx_fill_nbr,               -- Fill number
+   c.fill_disposition_cd,       -- Fill disposition code
+   c.fill_location_cd,          -- Fill location code (e.g., WB, HLD, PA, PR)
+   c.seq_num                    -- Sequence number (2=Central, 1=Pickup, 0=Other)
+ FROM
+   (
+     -- Patient search button press events
+     select
+       distinct pos_event_id,
+       screen_nm
+     FROM
+       CORE_RX.CURATED_SCRIPT.POS_EVENT_DETAIL
+     where
+       REC_EFF_TS >= TO_DATE('2024-07-01')
+       and screen_nm in (
+'patient_search', 'patient-search'  -- Patient search screen variations
+       )
+       and event_type_nm = 'button_pressed'
+   ) a
+   JOIN (
+     -- POS transaction header information
+     select
+       distinct pos_event_id,
+       store_nbr,
+       transaction_start_ts,
+       transaction_end_ts
+     FROM
+       CORE_RX.CURATED_SCRIPT.POS_EVENT_HEADER
+     where
+       REC_EFF_TS >= TO_DATE('2024-07-01')
+   ) b ON a.pos_event_id = b.pos_event_id
+   LEFT JOIN (
+     -- Prescription script details for POS events
+     select
+       pos_event_id,
+       rxc_patient_id,
+       rx_nbr,
+       rx_fill_nbr,
+       fill_disposition_cd,
+       fill_location_cd,
+       -- Sequence logic: Central=2, Pickup=1, Other=0
+       CASE WHEN fill_location_cd LIKE '%-C' THEN '2'
+       WHEN fill_location_cd LIKE '%-P' THEN '1' ELSE '0' END AS seq_num
+     FROM
+       CORE_RX.CURATED_SCRIPT.POS_EVENT_SCRIPT
+     where
+       REC_EFF_TS >= TO_DATE('2024-07-01')
+   ) c on a.pos_event_id = c.pos_event_id
+ WHERE
+   c.rxc_patient_id is not NULL        -- Must have patient ID
+   and a.screen_nm != 'patient-search'; -- Exclude hyphenated version
+
+-- Step 3: Add Return to Stock (RTS) event flags
+--
+-- PURPOSE: Identifies prescriptions that were returned to stock before the patient search
+--
+-- BUSINESS LOGIC:
+-- - RTS events occur when filled prescriptions are returned to inventory
+-- - Typically happens after hold periods expire or patient doesn't pick up
+-- - Critical for ONR analysis: if RTS occurred before search, explains why order "not ready"
+-- - Only considers prescriptions with fill status code '9' (Return to Stock)
+--
+-- TIMING LOGIC:
+-- - rts_evnt = 'Y': Return to stock timestamp <= patient search timestamp
+-- - rts_evnt = 'N': No RTS event OR RTS occurred after patient search
+--
+-- BUSINESS IMPACT:
+-- - Helps distinguish legitimate ONR (not yet filled) from customer service issues
+-- - Enables analysis of hold period effectiveness and pickup patterns
+-- - Supports inventory management and patient communication improvements
+--
+-- EXPECTED IMPACT: ~10-15% of searches may have prior RTS events
+CREATE OR REPLACE TEMPORARY TABLE ONR_RTS_RX_TBL AS
+ select
+   a.*,
+   -- Flag if prescription was returned to stock before patient search
+   case when b.rts_flg is not NULL
+   and b.return_to_stock_ts <= a.transaction_start_ts then 'Y' else 'N' end as rts_evnt
+ FROM
+   ONR_POS_TBL a
+   LEFT JOIN (
+     -- Return to Stock events (status code 9)
+     select
+       DISTINCT rx_nbr,
+       store_nbr,
+       fill_nbr,
+       RETURN_TO_STOCK_TS,
+       'Y' as rts_flg
+     from
+       ONR_RXFILL_DL
+     WHERE
+       FILL_STATUS_CD = '9'           -- Status 9 = Return to Stock
+       AND RETURN_TO_STOCK_TS is not NULL
+   ) b ON a.rx_nbr = b.rx_nbr
+   AND a.store_nbr = b.store_nbr
+   AND a.rx_fill_nbr = b.fill_nbr;
+
+
+-- Step 4: Process Hold (HLD) prescriptions
+--
+-- PURPOSE: Validates hold events by ensuring patient search occurred before prescription fill
+--          within a 10-minute window
+--
+-- BUSINESS LOGIC:
+-- - Hold locations indicate prescriptions temporarily set aside (insurance issues, 
+--   patient questions, controlled substances, etc.)
+-- - Patient searches for held prescriptions may trigger immediate processing
+-- - 10-minute window ensures search and fill are related (not coincidental)
+--
+-- VALIDATION CRITERIA:
+-- - Patient search timestamp <= prescription fill timestamp (logical sequence)
+-- - Time difference between search and fill: 0-10 minutes (business rule)
+-- - Same prescription, store, and fill number (exact match required)
+--
+-- WHY 10 MINUTES:
+-- - Typical time for pharmacist to process held prescription after customer inquiry
+-- - Balances capturing related events while excluding unrelated activities
+-- - Based on operational workflow analysis and business input
+--
+-- BUSINESS VALUE:
+-- - Measures responsiveness to customer inquiries about held prescriptions
+-- - Identifies process improvement opportunities in hold management
+-- - Supports customer satisfaction metrics for prescription readiness
+CREATE OR REPLACE TEMPORARY TABLE ONR_HLD_TBL AS
+ SELECT
+   pos_event_id,
+   rx_nbr,
+   store_nbr,
+   rx_fill_nbr
+ FROM
+   (
+     SELECT
+       a.pos_event_id,
+       a.rx_nbr,
+       a.store_nbr,
+       a.rx_fill_nbr,
+       a.transaction_start_ts,
+       b.prescription_fill_ts,
+       row_number() over (
+         partition by a.pos_event_id,
+         a.rx_nbr,
+         a.store_nbr,
+         a.rx_fill_nbr
+         order by
+           prescription_fill_ts asc
+       ) as rn
+     FROM
+       (
+         select
+           *
+         from
+           ONR_POS_TBL
+         WHERE
+           fill_location_cd = 'HLD'
+       ) a
+       JOIN (
+         SELECT
+           rx_nbr,
+           store_nbr,
+           fill_nbr,
+           PRESCRIPTION_FILL_TS
+         FROM
+           (
+             SELECT
+               rx_nbr,
+               store_nbr,
+               fill_nbr,
+               PRESCRIPTION_FILL_TS,
+               row_number() over (
+                 partition by store_nbr,
+                 rx_nbr,
+                 fill_nbr,
+                 PRESCRIPTION_FILL_TS
+                 order by
+                   PRESCRIPTION_FILL_TS desc
+               ) as rn
+             FROM
+               ONR_RXFILL_DL
+             WHERE
+               FILL_STATUS_CD != '0'
+               --AND REC_EFF_TS >= '2022-07-01'
+           )
+         -- WHERE
+         --   rn = 1
+       ) b ON a.rx_nbr = b.rx_nbr
+       AND a.store_nbr = b.store_nbr
+       AND a.rx_fill_nbr = b.fill_nbr
+     WHERE
+       a.transaction_start_ts <= b.prescription_fill_ts
+   )
+ WHERE
+   -- Validate timing: patient search must be 0-10 minutes before prescription fill
+   datediff(
+     minute, transaction_start_ts, prescription_fill_ts
+   ) <= 10
+   AND datediff(
+     minute, transaction_start_ts, prescription_fill_ts
+   ) >= 0;
+
+
+
+-- Step 5: Process Prior Authorization (PA) prescriptions  
+--
+-- PURPOSE: Links patient search events to completed outbound contacts for prior auth
+--
+-- BUSINESS CONTEXT:
+-- - Prior Authorization required by insurance before dispensing certain medications
+-- - Pharmacy staff must contact insurance companies to obtain approval
+-- - Patients may search for prescriptions while PA process is underway
+-- - Only completed PA contacts indicate successful resolution
+--
+-- MATCHING LOGIC:
+-- - Patient searches with fill_location_cd = 'PA' (Prior Auth location)
+-- - Joined to outbound contacts with FINAL_DISPOSTION_TXT = 'Completed'
+-- - Matches on prescription number and store (fill number matching optional)
+--
+-- DATA QUALITY NOTES:
+-- - Only includes successfully completed PA processes
+-- - Excludes abandoned, failed, or pending PA attempts
+-- - Uses most recent contact timestamp for each prescription
+--
+-- BUSINESS METRICS:
+-- - Measures patient inquiry frequency during PA process
+-- - Enables analysis of PA resolution times and customer communication
+-- - Supports process improvements for insurance authorization workflows
+CREATE OR REPLACE TEMPORARY TABLE ONR_PA_TBL AS
+ select
+   distinct a.pos_event_id,
+   a.rx_nbr,
+   a.store_nbr, 
+    a.rx_fill_nbr
+ from
+   (
+     -- Patient search events for Prior Authorization location
+     select
+       *
+     from
+       ONR_POS_TBL
+     WHERE
+       fill_location_cd = 'PA'
+   ) a
+   join (
+     -- Completed outbound contacts for prior authorization
+     select
+       ORIGINAL_RX_NBR,
+       ORIGINAL_FILL_NBR,
+       STORE_NBR,
+       MOST_RECENT_CONTACT_TS
+     from
+       (
+         select
+           *,
+           row_number() over (
+             partition by ORIGINAL_RX_NBR,
+             ORIGINAL_FILL_NBR,
+             STORE_NBR
+             order by
+               MOST_RECENT_CONTACT_TS desc
+           ) as rnk
+         from
+           CORE_RX.CURATED_OUTREACH.RXC_OUTBOUND_CONTACT
+         where
+           REC_EFF_TS >= TO_DATE('2024-07-01')
+           and FINAL_DISPOSTION_TXT = 'Completed'  -- Only completed PA contacts
+       )
+   ) b on a.rx_nbr = b.ORIGINAL_RX_NBR
+   and a.store_nbr = b.STORE_NBR;
+
+
+-- Step 6: Process Prescription Request (PR) events
+--
+-- PURPOSE: Links patient search for prescription requests to new prescriptions filled
+--          within 10 days, matching by patient, store, and GCN (same drug class)
+--
+-- BUSINESS CONTEXT:
+-- - Patients request refills for expired prescriptions or new prescriptions
+-- - Pharmacy may need to contact doctor for new prescription or refill authorization
+-- - Patient searches during request period should link to eventual new prescription
+-- - GCN matching ensures same therapeutic drug class (not just exact NDC match)
+--
+-- COMPLEX MATCHING LOGIC:
+-- 1. Identify patient searches at prescription request locations (PRQ, PR, RRA, etc.)
+-- 2. Find subsequent new prescriptions (fill_nbr = 0) for same patient at same store
+-- 3. Match by GCN sequence number (same drug therapeutic class)
+-- 4. Validate timing: new prescription verified within 10 days of search
+-- 5. Exclude same prescription number (must be NEW prescription)
+--
+-- WHY GCN MATCHING:
+-- - NDC codes change frequently (manufacturer, strength, packaging differences)
+-- - GCN represents therapeutic equivalence (same active ingredient/strength)
+-- - Enables matching generic substitutions and therapeutic alternatives
+--
+-- 10-DAY BUSINESS RULE:
+-- - Typical timeframe for doctor offices to process prescription requests
+-- - Balances capturing related events vs. unrelated coincidental prescriptions
+-- - Accounts for weekends, holidays, and provider response times
+--
+-- EXPECTED PATTERNS:
+-- - Higher match rates for chronic medications (diabetes, hypertension)
+-- - Lower match rates for acute/short-term prescriptions
+-- - Seasonal variations for certain drug classes
+CREATE OR REPLACE TEMPORARY TABLE ONR_PR_TBL AS WITH RXFILL as (
+   select
+     distinct RXC_PATIENT_ID,
+     RX_NBR,
+     STORE_NBR,
+     FILL_NBR,
+     NDC,
+     VERIFIED_TS
+   FROM
+     ONR_RXFILL_DL
+ ),
+ DRUG as (
+   -- Drug lookup for GCN sequence matching
+   select
+     distinct ndc,
+     gcn_sequence_nbr
+   from
+     CORE_RX.CURATED_PRODUCT.DRUG
+ ) -- Business rule: match new prescriptions within 10 days for same drug class
+ SELECT
+   old_pos,
+   old_rx,
+   old_store,
+   new_rx
+ FROM
+   (
+     select
+       *,
+       row_number() over (
+         partition by m.RXC_PATIENT_ID,
+         m.new_rx,
+         m.new_store
+         order by
+           m.new_verified_ts asc
+       ) as rn
+     FROM
+       (
+         SELECT
+           x.*,
+           y.rx_nbr as new_rx,         -- New prescription number
+           y.store_nbr as new_store,   -- Store number (must match)
+           y.fill_nbr as new_fill,     -- Fill number (0 = original)
+           y.ndc as new_ndc,           -- New NDC
+           y.verified_ts as new_verified_ts  -- New verification timestamp
+         from
+           (
+             -- Original prescription request patient search events
+             SELECT
+               DISTINCT a.pos_event_id as old_pos,
+               a.transaction_start_ts,
+               a.rxc_patient_id,
+               a.rx_nbr as old_rx,
+               a.store_nbr as old_store,
+               b.ndc as old_ndc,
+               c.gcn_sequence_nbr as gcn
+             FROM
+               (
+                 -- Prescription request location codes
+                 select
+                   *
+                 from
+                   ONR_POS_TBL
+                 WHERE
+                   fill_location_cd in (
+                     'PRQ', 'PR', 'PRQ-P', 'PRQ-X', 'RRA'
+                   )
+               ) a
+               LEFT JOIN RXFILL b on a.rx_nbr = b.rx_nbr
+               AND a.store_nbr = b.store_nbr
+               LEFT JOIN DRUG c on b.ndc = c.ndc
+           ) x
+           LEFT JOIN RXFILL y on x.RXC_PATIENT_ID = y.RXC_PATIENT_ID
+         WHERE
+           x.old_rx != y.rx_nbr        -- Different prescription number
+           AND x.old_store = y.store_nbr  -- Same store
+           AND y.fill_nbr = 0          -- Original fill only
+       ) m
+       JOIN DRUG n ON m.new_ndc = n.ndc
+     WHERE
+       m.gcn = n.gcn_sequence_nbr      -- Same drug class (GCN)
+       AND datediff(
+         day, transaction_start_ts, new_verified_ts
+       ) <= 10                         -- Within 10 days
+       AND datediff(
+         day, transaction_start_ts, new_verified_ts
+       ) >= 0                          -- After patient search
+   );
+ 
+-- Step 7: Union all disposition types and add business logic
+--
+-- PURPOSE: Combines all patient search events with their appropriate prescription matches
+--          and calculates first attempt order ready flag
+--
+-- INTEGRATION LOGIC:
+-- This step merges four different prescription disposition workflows:
+-- 1. Standard locations (WB, etc.) - Direct patient search to prescription matching
+-- 2. Hold (HLD) - Time-validated search-to-fill relationships
+-- 3. Prior Auth (PA) - Search events linked to completed PA processes  
+-- 4. Prescription Requests (PR) - Search events linked to new prescriptions via GCN matching
+--
+-- FIRST ATTEMPT ORDER READY CALCULATION:
+-- - 'Y': Fill location codes WB, WB-X, WB-C, WB-P ("Will Be ready" codes)
+-- - 'N': All other location codes indicate prescription not immediately ready
+--
+-- DEDUPLICATION STRATEGY:
+-- - DENSE_RANK ensures consistent ordering for identical events
+-- - Partitioned by: new_rx_nbr, new_fill_nbr, store_nbr, seq_num, rts_evnt
+-- - Ordered by: transaction_start_ts (earliest search event first)
+--
+-- BUSINESS IMPACT:
+-- - Enables comprehensive ONR analysis across all disposition types
+-- - Supports operational metrics for prescription readiness efficiency
+-- - Provides foundation for customer experience improvement initiatives
+-- - Allows comparative analysis between different fulfillment workflows
+--
+-- DATA VOLUME: Combines 100K+ monthly search events into unified analytical dataset
+CREATE OR REPLACE TEMPORARY TABLE ONR_UNION_TBL AS WITH HLD_TBL AS (
+   select
+     a.*,
+     a.rx_nbr as new_rx_nbr,
+     a.rx_fill_nbr as new_fill_nbr
+   from
+     (
+       select
+         *
+       from
+        ONR_RTS_RX_TBL
+       where
+         fill_location_cd = 'HLD'
+     ) a
+     JOIN ONR_HLD_TBL b ON a.rx_nbr = b.rx_nbr
+     AND a.rx_fill_nbr = b.rx_fill_nbr
+     AND a.store_nbr = b.store_nbr
+     AND a.pos_event_id = b.pos_event_id
+ ),
+ PA_TBL AS (
+   select
+     a.*,
+     a.rx_nbr as new_rx_nbr,
+     a.rx_fill_nbr as new_fill_nbr
+   from
+     (
+       select
+         *
+       from
+         ONR_RTS_RX_TBL
+       where
+         fill_location_cd = 'PA'
+     ) a
+     JOIN ONR_PA_TBL b ON a.rx_nbr = b.rx_nbr
+     AND a.store_nbr = b.store_nbr
+     AND a.pos_event_id = b.pos_event_id
+ ),
+ PR_TBL AS (
+   select
+     a.*,
+     b.new_rx as new_rx_nbr,
+     0 as new_fill_nbr
+   from
+     (
+       select
+         *
+       from
+         ONR_RTS_RX_TBL
+       where
+         fill_location_cd in (
+           'PRQ', 'PR', 'PRQ-P', 'PRQ-X', 'RRA'
+         )
+     ) a
+     JOIN ONR_PR_TBL b ON a.rx_nbr = b.old_rx
+     AND a.store_nbr = b.old_store
+     AND a.pos_event_id = b.old_pos
+ )
+ select
+   *,
+   -- Flag prescriptions where order was ready on first attempt (Will Be ready codes)
+   case when fill_location_cd in ('WB', 'WB-X', 'WB-C', 'WB-P') then 'Y' else 'N' end as first_attempt_order_ready
+ from
+   (
+     SELECT
+       *,
+       DENSE_RANK() over (
+         partition by new_rx_nbr,
+         new_fill_nbr,
+         store_nbr,
+         seq_num,
+         rts_evnt
+         order by
+           transaction_start_ts asc
+       ) as rn
+     FROM
+       (
+         -- Standard location codes (excluding special processing codes)
+         select
+           *,
+           rx_nbr as new_rx_nbr,
+           rx_fill_nbr as new_fill_nbr
+         from
+           ONR_RTS_RX_TBL
+         where
+           fill_location_cd not in (
+             'MC',          -- Medical Consultation
+             'HLD',         -- Hold (processed separately)
+             'PA',          -- Prior Authorization (processed separately) 
+             'PRQ', 'PR',   -- Prescription Request (processed separately)
+             'PRQ-P', 'PRQ-X', 'RRA'  -- Other request types
+           )
+         UNION
+         -- Add validated Hold events
+         SELECT
+           *
+         FROM
+           HLD_TBL
+         UNION
+         -- Add validated Prior Authorization events  
+         SELECT
+           *
+         FROM
+           PA_TBL
+         UNION
+         -- Add matched Prescription Request events
+         SELECT
+           *
+         FROM
+           PR_TBL
+       )
+     where
+       new_fill_nbr is not NULL
+   );
+
+
+
+-- Step 8: Add promise time and calculate ONR before promise metric
+--
+-- PURPOSE: Determines if patient search occurred before the promise time (true ONR event)
+--
+-- PROMISE TIME BUSINESS LOGIC:
+-- - Promise time represents when pharmacy committed prescription would be ready
+-- - Set during prescription intake based on workflow, complexity, and capacity
+-- - Key customer service metric: prescriptions should be ready by promise time
+--
+-- ONR BEFORE PROMISE CALCULATION (Primary KPI):
+-- The onr_bfr_prms flag = 'Y' ONLY when ALL conditions are met:
+-- 1. Promise time exists (not NULL)
+-- 2. NOT a special processing location (PRQ, PR, PA, HLD, RRA, etc.)
+-- 3. Order was NOT ready on first attempt (first_attempt_order_ready = 'N')
+-- 4. Patient search occurred BEFORE promise time (transaction_start_ts <= promise_ts)
+--
+-- WHY EXCLUDE SPECIAL LOCATIONS:
+-- - These locations represent known delays (PA approval, doctor contact, etc.)
+-- - Promise times may not apply to these workflow exceptions
+-- - Focus ONR metric on standard prescription processing failures
+--
+-- IMMUNIZATION FLAG LOGIC:
+-- - Links to immunization NDC configuration to classify prescription type
+-- - Immunizations may have different promise time expectations
+-- - Enables separate analysis of vaccination vs. medication workflows
+--
+-- BUSINESS SIGNIFICANCE:
+-- - Primary metric for customer service quality and operational efficiency
+-- - Directly impacts customer satisfaction and pharmacy performance ratings
+-- - Enables root cause analysis of promise time adherence issues
+-- - Supports capacity planning and workflow optimization initiatives
+CREATE OR REPLACE TEMPORARY TABLE ONR_PT_TBL AS
+ WITH PT_RXFILL AS (
+   select
+     *
+   from
+     (
+       select
+         store_nbr,
+         fill_nbr,
+         rx_nbr,
+         promise_ts,
+         row_number() over (
+           partition by store_nbr,
+           fill_nbr,
+           rx_nbr
+           order by
+             PROMISE_TS asc
+         ) as rnk
+       from
+         ONR_RXFILL_DL
+     )
+   where
+     rnk = 1
+ ),
+ IMZ AS (
+   select
+     rx_nbr
+   from
+     ONR_RXFILL_DL
+   where
+     IMZ_FLG = 'Y'
+ )
+ select
+   a.*, 
+   b.PROMISE_TS,
+   -- ONR Before Promise Logic:
+   -- Y = Patient search occurred before promise time AND prescription was not order ready
+   -- N = No promise time, special location codes, order was ready, or search after promise
+   CASE 
+     WHEN b.PROMISE_TS is NULL THEN 'N'                    -- No promise time
+     WHEN a.FILL_LOCATION_CD in (
+       'PRQ', 'PR', 'PA', 'PRQ-P', 'PRQ-X', 'HLD', 'RRA'
+     ) THEN 'N'                                           -- Special processing codes
+     WHEN a.first_attempt_order_ready = 'Y' THEN 'N'     -- Order was ready on first attempt
+     WHEN a.first_attempt_order_ready = 'N'
+       and a.TRANSACTION_START_TS <= b.PROMISE_TS THEN 'Y' -- True ONR event
+     ELSE 'N' 
+   END as onr_bfr_prms,
+   -- Immunization flag
+   case when c.rx_nbr is NULL then 'non-IMZ' else 'IMZ' end as imz_flg
+ from
+   ONR_UNION_TBL a
+   LEFT JOIN PT_RXFILL b on a.rx_nbr = b.rx_nbr
+   AND a.rx_fill_nbr = b.fill_nbr
+   AND a.store_nbr = b.store_nbr
+   LEFT JOIN IMZ c on a.rx_nbr = c.rx_nbr;
+
+
+
+-- Step 9: Add RxTie profile and fiscal week dimensions  
+--
+-- PURPOSE: Final table with all business dimensions for reporting and analysis
+--
+-- RXTIE INTEGRATION:
+-- - RxTie is the pharmacy's loyalty/membership program
+-- - Members may have different service expectations and pickup patterns
+-- - PRIMARY_TIE_DATE indicates active membership enrollment
+-- - Enables customer segment analysis and targeted service improvements
+--
+-- FISCAL CALENDAR INTEGRATION:
+-- - Aligns transaction dates with corporate fiscal reporting periods
+-- - Enables consistent week-over-week and period-over-period analysis
+-- - Supports executive reporting and business performance tracking
+-- - Fiscal weeks may differ from calendar weeks for business planning
+--
+-- ANALYTICAL DIMENSIONS SUMMARY:
+-- - Temporal: Transaction timestamps, promise times, fiscal weeks
+-- - Operational: Store numbers, location codes, disposition codes
+-- - Clinical: Prescription details, immunization flags, drug classifications
+-- - Customer: Patient IDs, RxTie membership status
+-- - Process: ONR flags, RTS events, timing validations
+--
+-- REPORTING CAPABILITIES:
+-- - Executive dashboards: ONR rates by fiscal week, store performance
+-- - Operational reports: Promise time adherence, workflow efficiency
+-- - Customer analysis: RxTie member experience, immunization patterns
+-- - Quality metrics: First attempt success rates, hold management
+--
+-- DATA GOVERNANCE:
+-- - All PII (patient information) properly protected according to HIPAA
+-- - Aggregated reporting recommended to maintain patient privacy
+-- - Retention policies applied based on regulatory requirements
+CREATE OR REPLACE TABLE ONR_FINAL_TBL AS
+ WITH FSCL AS (
+   -- Fiscal calendar lookup
+   SELECT
+     DATE_DT,
+     FISCAL_WEEK_NBR
+   FROM
+     CORE_FSSC.CURATED_CALENDAR.DAY
+ )
+ SELECT
+   a.*,
+   -- RxTie patient profile flag
+   case when b.PRIMARY_TIE_DATE is not NULL then 'RxTie' else 'Non-RxTie' end as tie_flg,
+   -- Fiscal week for reporting
+   c.FISCAL_WEEK_NBR
+ FROM
+   ONR_PT_TBL a
+   LEFT JOIN APP_OMNIRX.OMNI_DL.RXTIE_PROFILE b on a.RXC_PATIENT_ID = b.RXC_PATIENT_ID
+   LEFT JOIN FSCL c on CAST(a.TRANSACTION_START_TS AS DATE) = CAST(c.DATE_DT AS DATE);
+-- Step 10: Create final output table for analysis and reporting
+--
+-- PURPOSE: Persistent analytical table for business intelligence and reporting
+--
+-- TABLE LOCATION: DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
+-- - DL_RX_OPERATION: Data Lake schema for pharmacy operations data
+-- - RPHAI_DS_SANDBOX: Pharmacy Analytics sandbox environment  
+-- - ONR_TABLE_ALL_TRANSACTION: Descriptive name for ONR analysis dataset
+--
+-- USAGE PATTERNS:
+-- - Business Intelligence tools (Tableau, PowerBI) connect for dashboards
+-- - Data scientists use for advanced analytics and machine learning
+-- - Operations teams query for daily/weekly performance monitoring
+-- - Executive reports aggregate data for strategic decision making
+--
+-- DATA REFRESH:
+-- - Table replaced completely on each execution (CREATE OR REPLACE)
+-- - Recommended schedule: Daily refresh to capture latest ONR events
+-- - Historical data preserved through date-based partitioning (if implemented)
+--
+-- ACCESS CONTROLS:
+-- - Sandbox environment allows data exploration and development
+-- - Production reporting tables should have appropriate access governance
+-- - Consider row-level security for multi-tenant environments
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION AS (
+  SELECT *
+ FROM   ONR_FINAL_TBL);
+
+-- Step 11: Data Quality and Sample Queries
+--
+-- PURPOSE: Validate data integrity and provide sample output for verification
+--
+-- DATA QUALITY CHECKS:
+-- 1. Record count validation ensures expected data volume
+-- 2. Unique transaction count identifies potential duplication issues
+-- 3. Sample output enables manual verification of business logic
+--
+-- EXPECTED RESULTS:
+-- - Total records: 100K+ monthly (varies by pharmacy volume and search patterns)
+-- - Unique transactions should be close to total records (minimal duplication)
+-- - Sample data should show diverse location codes, timestamps, and flags
+
+-- Total record count and unique transaction count validation
+SELECT
+    COUNT(*) as total_records, 
+    COUNT(DISTINCT(CONCAT(POS_EVENT_ID,'-',STORE_NBR,'-',NEW_RX_NBR,'-',NEW_FILL_NBR,'-',FILL_LOCATION_CD,'-',FILL_DISPOSITION_CD))) as unique_transactions
+FROM
+    DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION;
+
+-- Sample of final output data for manual verification
+SELECT
+    *
+FROM
+    DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
+LIMIT 10;
+
+/*
+ADDITIONAL RECOMMENDED DATA QUALITY CHECKS:
+================================================================================
+
+-- Check ONR before promise distribution (should be meaningful percentage)
+SELECT 
+    onr_bfr_prms,
+    COUNT(*) as count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
+FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
+GROUP BY onr_bfr_prms;
+
+-- Validate promise time coverage (most records should have promise times)
+SELECT 
+    CASE WHEN promise_ts IS NULL THEN 'No Promise Time' ELSE 'Has Promise Time' END as promise_status,
+    COUNT(*) as count
+FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
+GROUP BY CASE WHEN promise_ts IS NULL THEN 'No Promise Time' ELSE 'Has Promise Time' END;
+
+-- Check location code distribution (should reflect business mix)
+SELECT 
+    fill_location_cd,
+    COUNT(*) as count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
+FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
+GROUP BY fill_location_cd
+ORDER BY count DESC;
+
+-- Validate fiscal week coverage (should span expected date range)
+SELECT 
+    MIN(fiscal_week_nbr) as min_week,
+    MAX(fiscal_week_nbr) as max_week,
+    COUNT(DISTINCT fiscal_week_nbr) as unique_weeks
+FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION;
+
+-- Check RxTie and immunization distributions
+SELECT 
+    tie_flg,
+    imz_flg,
+    COUNT(*) as count
+FROM DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
+GROUP BY tie_flg, imz_flg
+ORDER BY count DESC;
+================================================================================
+*/
 
 /*
 ================================================================================
-INPUT TABLES AND THEIR FEATURES
+INPUT TABLES AND THEIR FEATURES - DETAILED REFERENCE
 ================================================================================
 
-1. CORE_RX.CURATED_SCRIPT.TRIAGE_QUEUE (Primary Source)
-   - RXC_PRESCRIPTION_FILL_ID: Direct link to prescription fills
-   - OUTBOUND_CONTACT_ID: Link to customer communication events
-   - ACTION_NOTE_ID: Link to clinical/procedural notes
-   - STORE_NBR: Store number (may be NULL, requiring linkage)
-   - RX_NBR: Prescription number (may be NULL, requiring linkage)  
-   - RX_FILL_NBR: Fill number (may be NULL, requiring linkage)
-   - TRIAGE_ITEM_TYPE_DETAIL_ID: Exception type classification
-   - DISPOSITION_TS: Exception resolution timestamp
-   - All other triage queue fields (status, priority, assignment, etc.)
+DATA ARCHITECTURE OVERVIEW:
+- All tables use Snowflake data warehouse architecture
+- CORE_RX schema contains operational pharmacy data
+- CURATED layers indicate cleaned, business-ready datasets
+- Date filters optimize performance and focus on relevant time periods
 
-2. CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_XREF (Linkage Table)
-   - RXC_PRESCRIPTION_FILL_ID: Prescription fill identifier (PK)
-   - STORE_NBR: Store number
+================================================================================
+
+1. CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL (Current fills from 2024-07-01)
+   - RXC_PATIENT_ID: Patient identifier
    - RX_NBR: Prescription number
-   - FILL_NBR: Fill number
-   - REC_EFF_TS: Record effective timestamp (for performance filtering)
-
-3. CORE_RX.CURATED_OUTREACH.RXC_OUTBOUND_CONTACT (Communication Data)
-   - RXC_OUTBOUND_CONTACT_ID: Outbound contact identifier (PK)
-   - RXC_PRESCRIPTION_FILL_ID: Link to prescription fills
-   - REC_EFF_TS: Record effective timestamp (for performance filtering)
-   - Communication details (contact type, disposition, timestamps, etc.)
-
-4. CORE_RX.CURATED_SCRIPT.RXC_ACTION_NOTE (Clinical Notes)
-   - RXC_ACTION_NOTE_ID: Action note identifier (PK)
    - STORE_NBR: Store number
+   - FILL_NBR: Fill number (0=original, 1+=refills)
+   - PRESCRIPTION_FILL_TS: Fill timestamp
+   - RETURN_TO_STOCK_TS: Return to stock timestamp
+   - FILL_STATUS_CD: Fill status code
+   - REC_EFF_TS: Record effective timestamp
+   - PROMISE_TS: Promise time to patient
+   - NDC: National Drug Code
+   - VERIFIED_TS: Verification timestamp
+   - PICKUP_TS: Pickup timestamp
+
+2. CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_HISTORY (Historical fills from 2022-07-01)
+   - Same structure as PRESCRIPTION_FILL table
+
+3. CORE_RX.CURATED_PRODUCT.RXC_IMMUNIZATION_NDC_CONFIG
+   - NDC: National Drug Code for immunizations
+
+4. CORE_RX.CURATED_SCRIPT.POS_EVENT_DETAIL (POS event details from 2024-07-01)
+   - POS_EVENT_ID: POS event identifier
+   - SCREEN_NM: Screen name (patient_search, patient-search)
+   - EVENT_TYPE_NM: Event type (button_pressed)
+   - REC_EFF_TS: Record effective timestamp
+
+5. CORE_RX.CURATED_SCRIPT.POS_EVENT_HEADER (POS event headers from 2024-07-01)
+   - POS_EVENT_ID: POS event identifier
+   - STORE_NBR: Store number
+   - TRANSACTION_START_TS: Transaction start timestamp
+   - TRANSACTION_END_TS: Transaction end timestamp
+   - REC_EFF_TS: Record effective timestamp
+
+6. CORE_RX.CURATED_SCRIPT.POS_EVENT_SCRIPT (POS prescription details from 2024-07-01)
+   - POS_EVENT_ID: POS event identifier
+   - RXC_PATIENT_ID: Patient identifier
    - RX_NBR: Prescription number
-   - FILL_NBR: Fill number
-   - REC_EFF_TS: Record effective timestamp (for performance filtering)
-   - Clinical note details (note text, category, pharmacist, etc.)
+   - RX_FILL_NBR: Fill number
+   - FILL_DISPOSITION_CD: Fill disposition code
+   - FILL_LOCATION_CD: Fill location code
+   - REC_EFF_TS: Record effective timestamp
 
-5. DL_RX_OPERATION.RX_OPS_SANDBOX.REF_QT_TRIAGE_ITEM_DESC_SP (Reference Data)
-   - TRIAGE_ITEM_TYPE_DETAIL_ID: Triage item type identifier (PK)
-   - TRIAGE_GROUP: High-level exception category
-   - TRIAGE_ITEM_TYPE_DETAIL_DSC: Detailed exception description
-   - QT_TYPE: Queue type classification
-   - Business rules and workflow routing information
+7. CORE_RX.CURATED_OUTREACH.RXC_OUTBOUND_CONTACT (Outbound contacts from 2024-07-01)
+   - ORIGINAL_RX_NBR: Original prescription number
+   - ORIGINAL_FILL_NBR: Original fill number
+   - STORE_NBR: Store number
+   - MOST_RECENT_CONTACT_TS: Most recent contact timestamp
+   - FINAL_DISPOSTION_TXT: Final disposition text
+   - REC_EFF_TS: Record effective timestamp
 
-6. CORE_FSSC.CURATED_CALENDAR.FISCAL_QUARTER (Calendar Dimension)
-   - START_DT: Fiscal quarter start date
-   - END_DT: Fiscal quarter end date
-   - FISCAL_QUARTER_NBR: Fiscal quarter number (20252 = Q2 FY2025)
-   - Additional fiscal calendar attributes
+8. CORE_RX.CURATED_PRODUCT.DRUG
+   - NDC: National Drug Code
+   - GCN_SEQUENCE_NBR: GCN sequence number for drug classification
+
+9. APP_OMNIRX.OMNI_DL.RXTIE_PROFILE
+   - RXC_PATIENT_ID: Patient identifier
+   - PRIMARY_TIE_DATE: Primary tie date for RxTie patients
+
+10. CORE_FSSC.CURATED_CALENDAR.DAY
+    - DATE_DT: Date
+    - FISCAL_WEEK_NBR: Fiscal week number
 
 ================================================================================
-OUTPUT TABLE AND FINAL FEATURES
+OUTPUT TABLE AND FINAL FEATURES - COMPREHENSIVE FIELD GUIDE
 ================================================================================
 
-TABLE: DL_RX_OPERATION.RPHAI_DS_SANDBOX.QT_EXCEPTION_MANAGEMENT_SP
+TABLE: DL_RX_OPERATION.RPHAI_DS_SANDBOX.ONR_TABLE_ALL_TRANSACTION
 
-RECORD GRAIN: One row per triage queue exception with enriched prescription keys
-TYPICAL VOLUME: 10,000-50,000 records per fiscal quarter (varies by network size)
-UPDATE FREQUENCY: Quarterly refresh aligned with fiscal reporting periods
+RECORD GRAIN: One row per patient search event linked to prescription disposition
+TYPICAL VOLUME: 100,000+ records per month (varies by pharmacy network size)
+UPDATE FREQUENCY: Recommended daily refresh for operational reporting
 
-Core Triage Fields (from QT.*):
-- All original triage queue fields including status, priority, timestamps
-- Exception handling workflow information
-- Assignment and resolution tracking data
+Core Transaction Fields:
+- POS_EVENT_ID: Unique POS event identifier
+- STORE_NBR: Store number
+- TRANSACTION_START_TS: Transaction start timestamp
+- TRANSACTION_END_TS: Transaction end timestamp
+- RXC_PATIENT_ID: Patient identifier
+- RX_NBR: Original prescription number from patient search
+- RX_FILL_NBR: Original fill number from patient search
+- FILL_DISPOSITION_CD: Fill disposition code
+- FILL_LOCATION_CD: Fill location code (WB, HLD, PA, PR, etc.)
+- SEQ_NUM: Sequence number (2=Central, 1=Pickup, 0=Other)
 
-Generated Primary Keys:
-- QT_KEY: Direct triage queue key (STORE_NBR-RX_NBR-RX_FILL_NBR)
-- PFI_KEY: Prescription fill interface key via RXC_PRESCRIPTION_FILL_ID
-- OBD_KEY: Outbound contact derived key via communication linkage
-- AN_KEY: Action note derived key via clinical note linkage
-- FINAL_KEY: Best available key using COALESCE hierarchy (Primary analytical key)
+Matched Prescription Fields:
+- NEW_RX_NBR: Final matched prescription number
+- NEW_FILL_NBR: Final matched fill number
 
-Business Classification Fields:
-- TRIAGE_GROUP: High-level exception category (Clinical, Operational, Insurance, etc.)
-- TRIAGE_ITEM_TYPE_DETAIL_DSC: Specific exception description (detailed business rules)
-- QT_TYPE: Queue type classification (Priority, Standard, Clinical Review, etc.)
+Business Logic Flags:
+- RTS_EVNT: Return to Stock event flag (Y/N)
+- FIRST_ATTEMPT_ORDER_READY: Order ready on first attempt (Y/N)
+- ONR_BFR_PRMS: Order Not Ready before Promise Time (Y/N) - KEY METRIC
+- IMZ_FLG: Immunization prescription flag (IMZ/Non-IMZ)
+- TIE_FLG: RxTie patient profile flag (RxTie/Non-RxTie)
 
-Temporal Dimension:
-- FISCAL_QUARTER_NBR: Fiscal quarter for executive reporting (20252 = Q2 FY2025)
+Additional Dimensions:
+- PROMISE_TS: Promise time to patient
+- FISCAL_WEEK_NBR: Fiscal week for reporting
+- RN: Dense rank for deduplication
 
-KEY BUSINESS APPLICATIONS:
+Key Business Metrics:
+- ONR_BFR_PRMS: Primary metric identifying true ONR events where patient 
+  searched before promise time and order was not ready on first attempt
+- IMZ_FLG: Distinguishes immunization vs regular prescriptions
+- TIE_FLG: Identifies RxTie loyalty program patients
+- FIRST_ATTEMPT_ORDER_READY: Indicates prescription readiness efficiency
+
+COMMON LOCATION CODES AND MEANINGS:
+- WB, WB-X, WB-C, WB-P: "Will Be ready" - prescription in final stages
+- HLD: Hold - prescription requires pharmacist review or patient consultation
+- PA: Prior Authorization - insurance approval required
+- PRQ, PR, PRQ-P, PRQ-X: Prescription Request - refill or new prescription needed
+- RRA: Refill Request Authorization - doctor approval needed for refill
+- MC: Medical Consultation - clinical review required
+
+ANALYSIS PATTERNS AND USE CASES:
 ================================================================================
 
-OPERATIONAL ANALYTICS:
-- Exception resolution time analysis by triage group and type
-- Workload distribution and capacity planning
-- Staff productivity and efficiency metrics
-- Process bottleneck identification
+OPERATIONAL DASHBOARDS:
+- Daily ONR rates by store and location type
+- Promise time adherence tracking
+- First attempt success rate monitoring
+- Hold and PA resolution time analysis
 
-QUALITY MANAGEMENT:
-- Exception root cause analysis using prescription linkages
-- Repeat exception pattern identification
-- Clinical intervention effectiveness measurement
-- Customer communication impact assessment
+CUSTOMER EXPERIENCE ANALYSIS:
+- RxTie member vs non-member ONR patterns
+- Immunization vs medication fulfillment efficiency
+- Peak hour and seasonal ONR trends
+- Store-level customer service performance
+
+PROCESS IMPROVEMENT OPPORTUNITIES:
+- Identify stores with high ONR_BFR_PRMS rates
+- Analyze correlation between RTS events and customer searches
+- Optimize promise time setting algorithms
+- Improve hold and PA workflow efficiency
 
 EXECUTIVE REPORTING:
-- Quarterly exception volume and trend analysis
-- Store-level exception management performance
-- Network-wide process improvement ROI
-- Regulatory compliance and audit support
+- Monthly/quarterly ONR trend analysis
+- Fiscal week performance comparisons  
+- Network-wide customer satisfaction metrics
+- ROI analysis for process improvement initiatives
 
-DATA QUALITY CONSIDERATIONS:
-- Multiple linkage methods maximize prescription key coverage (~95%+ expected)
-- 12-month lookback balances performance with data completeness
-- DISTINCT clause handles potential many-to-many relationships
-- COALESCE hierarchy ensures consistent primary key assignment
-- Fiscal quarter filtering focuses analysis on relevant business periods
-
+DATA PRIVACY AND COMPLIANCE:
+- Patient identifiers (RXC_PATIENT_ID) must be handled per HIPAA requirements
+- Aggregate reporting recommended for external sharing
+- Access controls should align with business need-to-know principles
+- Audit trails recommended for sensitive data access
 ================================================================================
 */
