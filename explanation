@@ -1,10 +1,4 @@
-Here is a concise README file for your Drive-Thru Analysis script, formatted for clarity and aligned with your template style:
 
-⸻
-
-Drive-Thru Analysis – Prescription Transaction Analytics (Short Version)
-
-Purpose
 
 This pipeline performs a comprehensive year-to-date analysis of prescription transactions across drive-thru and in-store settings. It integrates POS data, prescription fills, messaging engagement, and operational workflow to identify trends, classify transactions, and surface actionable insights for customer and store experience improvements.
 
@@ -45,6 +39,3 @@ Use Cases
 	•	Identify operational bottlenecks via re-edit flags
 	•	Support dashboarding in Tableau or Looker for drive-thru performance metrics
 
-⸻
-
-Let me know if you’d like this exported to a .md file or merged with other docs.
