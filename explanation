@@ -1,1 +1,18 @@
+Here is the Source-to-Attribute Mapping Table for the final output table:
 
+📊 Final Output Table:
+
+DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FLAGGED
+
+Database	Schema	Table	Attributes
+DL_RX_OPERATION	RPHAI_DS_SANDBOX	DRIVE_THRU_ANALYSIS_YTD25_SP_FLAGGED	POS_EVENT_ID, LOCATION_CD, TOTAL_SCRIPTS, ORDER_SOLD_SCRIPT, COLD_MED_SCRIPT, LARGE_BAG_SCRIPT, SPECIALTY_MED_SCRIPT, MIX_MED_SCRIPT, POS_STATUS, POS_SUB_STATUS, SOLD_STATUS, RTOR_STATUS, RXR_STATUS, ORRTS_STATUS, ORR_STATUS, RTS_STATUS, REEDIT_REBILL_FLAG, OLDEST_INDUCTION_DATE_TS, TRANSACTION_START_DATE_TS, TRANSACTION_END_DATE_TS, INDUCTION_TRANSACTION_DIFF, TRANSACTION_DURATION, INDUCTION_TRANSACTION_DECILE, TRANSACTION_DURATION_DECILE, NUMERIC_WAITING_BIN_SCRIPT
+
+
+⸻
+
+This is the complete lineage for the flagged output table, grouped as requested and ready to be copied into Excel or a data dictionary.
+
+If you’d like a CSV download link for this table or the entire lineage, just say:
+
+➡️ Export CSV or
+➡️ Export Full Lineage CSV
