@@ -1,1 +1,50 @@
+Here is a concise README file for your Drive-Thru Analysis script, formatted for clarity and aligned with your template style:
 
+⸻
+
+Drive-Thru Analysis – Prescription Transaction Analytics (Short Version)
+
+Purpose
+
+This pipeline performs a comprehensive year-to-date analysis of prescription transactions across drive-thru and in-store settings. It integrates POS data, prescription fills, messaging engagement, and operational workflow to identify trends, classify transactions, and surface actionable insights for customer and store experience improvements.
+
+Output Tables
+	•	DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP
+Detailed prescription-level dataset including timestamps, flags, drug classifications, and messaging attributes.
+	•	DL_RX_OPERATION.RPHAI_DS_SANDBOX.DRIVE_THRU_ANALYSIS_YTD25_SP_FlAGGED
+Transaction-level summary with operational classifications such as order readiness, sale status, messaging impact, and re-edit patterns.
+
+Key Components
+	•	Timeframe Configuration: Uses fiscal week logic to dynamically filter data within START_DATE and END_DATE.
+	•	Data Integration: Joins POS, ONR (order readiness), fill activity, messaging, and drug reference tables.
+	•	Feature Engineering:
+	•	Drug classification flags (Cold Chain, Large Bag, Specialty)
+	•	Messaging engagement (RTOR, RXR, ORRTS, ORR)
+	•	Process milestones (Induction, QV2, Fill, POS)
+	•	Status classifications (Ready/Not Ready, Sold, RTS, Re-edit)
+	•	Automation flag: scripts eligible for numeric waiting bins
+	•	Re-edit/Re-bill Detection: Flags prescriptions requiring reprocessing after initial readiness.
+
+Main Filters
+	•	Transaction dates: based on fiscal calendar
+	•	Location: DRIVE or STORE
+	•	Prescription origin: includes new fills and refill scenarios
+	•	Messaging window: 14 days for linking texts to pickup behaviors
+
+Dependencies (Primary Data Sources)
+	•	SEM_RX.COMMON_RX.POS_TS_ALL_TRANSACTION_DETAIL
+	•	APP_OMNIRX.OMNI_DL.ONR_FINAL_TBL
+	•	CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL, PRESCRIPTION_FILL_ACTIVITY
+	•	CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK
+	•	Message and drug reference tables (SMS_DL, ref lists like NWB_COLD_CHAIN)
+
+Use Cases
+	•	Analyze customer readiness and pickup timing
+	•	Measure messaging effectiveness at the drive-thru
+	•	Segment prescription complexity (cold chain, specialty, compound)
+	•	Identify operational bottlenecks via re-edit flags
+	•	Support dashboarding in Tableau or Looker for drive-thru performance metrics
+
+⸻
+
+Let me know if you’d like this exported to a .md file or merged with other docs.
