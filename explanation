@@ -1,1 +1,34 @@
+Here is a short version of the README, structured in a clean, simple format as you requested:
 
+⸻
+
+Promise Time Data Layer – Patient Arrival Model (Short Version)
+
+Overview
+
+This SQL workflow builds a feature-packed dataset to support modeling of patient arrival behavior after prescription induction. It includes core script details, time-based features, behavioral patterns, clinical attributes, and store operations data. The data serves as the foundation for training predictive models for same-day vs delayed pickups.
+
+Key Steps
+	1.	Base Script Extraction – Get demographics, prescription, and pharmacy attributes.
+	2.	Promise Time & Induction – Capture promise and induction times from activity logs.
+	3.	Feature Engineering – Derive age, distance, clinical flags, and dayparts.
+	4.	Historical Behavior – Summarize past pickup patterns over 6 & 12 months.
+	5.	Scheduled & Bundle Scripts – Identify script grouping and scheduled fill patterns.
+	6.	HOO & Store Indicators – Contextual timing based on pharmacy operating hours.
+	7.	Final Dataset Creation – Train and validation datasets created for ML modeling.
+
+Output Tables
+	•	promise_time_class_model_v4_10162025_C590078 – Master feature table
+	•	PATIENT_ARRVL_TRAINING_SET_C590078 – Training dataset (~5M records)
+	•	PATIENT_ARRVL_VALIDATION_SET_C590078 – Validation dataset (~500K records)
+
+Filters Applied
+	•	Weekday induction
+	•	Within store business hours
+	•	Only new fills
+	•	Valid prescriber (NPI)
+	•	High-performing stores (Top 10 HOO groups)
+
+Purpose
+
+This dataset supports predictive analytics for patient pickup timings and is ready for integration with downstream platforms like Databricks or Vertex AI.
