@@ -1,11 +1,3 @@
-Here’s your concise, executive-style README for the QT Exception Management script, following the same structure as your earlier request:
-
-⸻
-
-QT Exception Management – Primary Key Logic for Triage Queue Analytics
-
-Purpose
-
 This script builds a unified dataset for exception management analytics by assigning a consistent Store–Rx–Fill composite key to every triage queue instance. It enables operational and executive reporting across exceptions that may span different systems (queue, fill, outreach, and action notes).
 
 Key Features
@@ -46,6 +38,3 @@ Notes
 	•	Distinct logic avoids duplicate join inflation
 	•	Fiscal filter ensures quarter-specific dataset for business alignment
 
-⸻
-
-Let me know if you want a more detailed version or markdown formatting!
