@@ -1,84 +1,4 @@
 
-⸻
-
-✅ 2. Diagram: Code 2 ETL Flow (Manager-Friendly Visual)
-
-          ┌────────────────────────────────────────────┐
-          │         START: Fiscal Week Detection        │
-          │   (Min/Max fiscal weeks → START/END dates)  │
-          └────────────────────────────────────────────┘
-                               │
-                               ▼
-          ┌────────────────────────────────────────────┐
-          │       STEP 1: Build Base RX Population      │
-          │  • PF + PF_HISTORY (WB / SOLD / RTS statuses)│
-          │  • 6-month lookback window                  │
-          └────────────────────────────────────────────┘
-                               │
-                               ▼
-          ┌────────────────────────────────────────────┐
-          │      STEP 2: Pull Verification Events       │
-          │  • Use PF_XREF to tie PF → PF_ACTIVITY      │
-          │  • Extract QV2 (ACTIVITY_CD = 4)            │
-          │  • Compute MIN_QV2_DATE                     │
-          └────────────────────────────────────────────┘
-                               │
-                               ▼
-          ┌────────────────────────────────────────────┐
-          │          STEP 3: Return-to-Stock Events     │
-          │  • RTS_INVENTORY_EVENT_DETAIL               │
-          │  • Identify first RTS event using ROW_NUMBER│
-          │  • Compute MIN_RTS_DATE                     │
-          └────────────────────────────────────────────┘
-                               │
-                               ▼
-          ┌────────────────────────────────────────────┐
-          │   STEP 4: Enrich with Drug + Store Details  │
-          │  • Join DRUG (NDC → GCN)                    │
-          │  • Store attributes (area, region, district)│
-          └────────────────────────────────────────────┘
-                               │
-                               ▼
-          ┌────────────────────────────────────────────┐
-          │     STEP 5: Fill History (12-month window)  │
-          │  • Former fills via patient & GCN matching  │
-          │  • LAG to capture prior behaviors           │
-          │  • Derive FILL_HISTORY_IND & FILL_NUMBER    │
-          └────────────────────────────────────────────┘
-                               │
-                               ▼
-          ┌────────────────────────────────────────────┐
-          │      STEP 6: Classify Fill Source (RF/eRx)  │
-          │  • READYFILL tables                         │
-          │  • DIM_RX_FILL_SOURCE                       │
-          │  • Produces FILL_SOURCE classification      │
-          └────────────────────────────────────────────┘
-                               │
-                               ▼
-     ┌────────────────────────────────────────────────────────┐
-     │   STEP 7: Fiscal Week Aggregations (QV2-level)         │
-     │   • TTL_VERIFIED, TTL_RTS within 5/30 days, RTS rates  │
-     └────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-     ┌────────────────────────────────────────────────────────┐
-     │   STEP 8: RTS Volume Aggregations                      │
-     │   • Count multiple RTS events                          │
-     │   • TTL_RTS_VOLUME & TTL_QV2_VOLUME                    │
-     └────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-     ┌────────────────────────────────────────────────────────┐
-     │        STEP 9: Merge QV2-Level + Volume-Level          │
-     │   → RETURN_TO_STOCK_NEW_DASHBOARD                      │
-     │   • Final curated table with all metrics               │
-     └────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-                 FINAL OUTPUT → Dashboard-Ready Table
-
-
-⸻
 
 ✅ 3. Short Email-Style Summary You Can Send to Your Manager
 
@@ -105,21 +25,6 @@ I reviewed the two RTS-related SQL codebases and summarized the core differences
 	•	Code 1 is suitable for exploration and trend analysis.
 	•	Code 2 is a complete production workflow designed for recurring reporting with comprehensive RTS and verification metrics.
 
-Let me know if you’d like a deeper dive into any specific component.
-
-Best,
-
-
-⸻
-
-If you want, I can also prepare:
-
-✅ A PowerPoint slide deck comparing both codes
-✅ A technical architecture diagram
-✅ A flowchart with swim lanes (PF, History, RTS, Calendar, RF logic)
-
-Just tell me!
-Absolutely — here are two clean, manager-friendly ETL flow diagrams:
 
 ⸻
 
@@ -172,8 +77,6 @@ Prescription Fill + RTS + Copay + Acute/Generic Analytics
                                    ▼
                     **FINAL OUTPUT → Analysis Tables Only**
 
-Code 1 Flow Summary:
-A simple, direct ETL flow pulling PF + RTS + Copay data → PF_DATA → analytics (copay, acute, generic, RTS %).
 
 ⸻
 
@@ -270,16 +173,4 @@ Full Enterprise Return-to-Stock Pipeline + Dashboard Creation
                                    ▼
                        **FINAL OUTPUT → Dashboard Table**
 
-Code 2 Flow Summary:
-A deep, multi-layer ETL pipeline: fiscal-week → base RX → QV2 logic → RTS logic → drug/store enrichment → fill-source/12-month history → weekly aggregates → dashboard table.
 
-⸻
-
-🎯 If you want, I can also generate:
-
-✔ A side-by-side dual diagram comparing Code 1 vs Code 2 visually
-✔ A PowerPoint slide deck version
-✔ A Swimlane flow diagram (PF, RTS, DRUG, Store, Calendar lanes)
-✔ A system architecture view (Inputs → Processing → Outputs)
-
-Just tell me!
