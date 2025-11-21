@@ -119,3 +119,167 @@ If you want, I can also prepare:
 ✅ A flowchart with swim lanes (PF, History, RTS, Calendar, RF logic)
 
 Just tell me!
+Absolutely — here are two clean, manager-friendly ETL flow diagrams:
+
+⸻
+
+✅ ETL FLOW DIAGRAM — CODE 1
+
+Prescription Fill + RTS + Copay + Acute/Generic Analytics
+
+                    ┌──────────────────────────────┐
+                    │ 1. SELECT DATE RANGE          │
+                    │  Fiscal Quarter → START/END   │
+                    └──────────────────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │ 2. LOAD PRESCRIPTION_FILL     │
+                    │  • PF + DRUG details          │
+                    │  • DAY_SUPPLY_QTY             │
+                    │  • Acute / Generic flags      │
+                    └──────────────────────────────┘
+                                   │
+                                   ▼
+           ┌────────────────────────────────────────────────┐
+           │ 3. JOIN RETURN-TO-STOCK SOURCES                 │
+           │  • RTS_INVENTORY_EVENT_DETAIL                   │
+           │  • INVENTORY_EVENT (ACTIVITY_TYPE_ID = 6)       │
+           │  → Create RTS flag (RTS_SCRIPT)                 │
+           └────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │ 4. COPAY BINNING             │
+                    │  Create ranges: $0, $0–$5,...│
+                    └──────────────────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │ 5. BUILD PF_DATA TABLE        │
+                    │  Combined PF + RTS + Copay    │
+                    └──────────────────────────────┘
+                                   │
+                                   ▼
+      ┌────────────────────────────────────────────────────────┐
+      │ 6. ANALYTICS LAYERS                                    │
+      │  • RTS performance (overall, by bin, by acute/generic) │
+      │  • Average copay, medians                              │
+      │  • Maintenance vs Acute medications                    │
+      │  • Generic vs Brand                                    │
+      └────────────────────────────────────────────────────────┘
+
+                                   ▼
+                    **FINAL OUTPUT → Analysis Tables Only**
+
+Code 1 Flow Summary:
+A simple, direct ETL flow pulling PF + RTS + Copay data → PF_DATA → analytics (copay, acute, generic, RTS %).
+
+⸻
+
+✅ ETL FLOW DIAGRAM — CODE 2
+
+Full Enterprise Return-to-Stock Pipeline + Dashboard Creation
+
+                   ┌──────────────────────────────────┐
+                   │ 1. GET FISCAL WEEK RANGE         │
+                   │ Min & Max fiscal week → dates    │
+                   └──────────────────────────────────┘
+                                   │
+                                   ▼
+         ┌────────────────────────────────────────────────┐
+         │ 2. CREATE BASE RX POPULATION                    │
+         │ • PF + PF_HISTORY (WB/SOLD/RTS statuses)        │
+         │ • 6-month window                                │
+         └────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+         ┌────────────────────────────────────────────────┐
+         │ 3. QV2 VERIFICATION LOGIC                       │
+         │ • Use PF_XREF + PF_ACTIVITY                     │
+         │ • Extract ACTIVITY_CD = 4                       │
+         │ • Compute MIN_QV2_DATE, QV2_IND                 │
+         └────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+         ┌────────────────────────────────────────────────┐
+         │ 4. RETURN-TO-STOCK (RTS) LOGIC                  │
+         │ • RTS_INVENTORY_EVENT_DETAIL                    │
+         │ • ROW_NUMBER() → first RTS event                │
+         │ • MIN_RTS_DATE                                   │
+         └────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+        ┌───────────────────────────────────────────────────┐
+        │ 5. ENRICH WITH DRUG + STORE + PATIENT INFO        │
+        │ • Join DRUG → GCN                                 │
+        │ • Join STORE → area, district, region             │
+        │ • Bring PF timestamps                             │
+        └───────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+        ┌───────────────────────────────────────────────────┐
+        │ 6. 12-MONTH FILL HISTORY LOGIC                    │
+        │ • Historical PF matching via patient + GCN        │
+        │ • LAG() → previous schedule reason, POS time      │
+        │ • Derive:                                         │
+        │    FILL_HISTORY_IND                               │
+        │    FILL_NUMBER (Fill 00 vs 01+)                   │
+        └───────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+       ┌─────────────────────────────────────────────────────┐
+       │ 7. FILL SOURCE CLASSIFICATION                       │
+       │ • READYFILL enrollment checks                       │
+       │ • DIM_RX_FILL_SOURCE join                           │
+       │ • Categorize: RF, eRx, Manual, IVR/Digital, Other   │
+       └─────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+       ┌─────────────────────────────────────────────────────┐
+       │ 8. FISCAL WEEK AGGREGATIONS – QV2 BASED             │
+       │ • TTL_VERIFIED                                      │
+       │ • RTS within 5/30 days                              │
+       │ • TTL_RTS overall                                   │
+       │ • Compute RTS_RATE                                  │
+       └─────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+       ┌─────────────────────────────────────────────────────┐
+       │ 9. VOLUME-LEVEL AGGREGATIONS (Multi-RTS Events)     │
+       │ • Count repeated RTS events                         │
+       │ • TTL_RTS_VOLUME / TTL_QV2_VOLUME                   │
+       │ • RTS_VOLUME_RATE                                   │
+       └─────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+        ┌────────────────────────────────────────────────────┐
+        │ 10. MERGE QV2 + VOLUME METRICS                     │
+        │ → RX_LEVEL_FINAL_TABLE                             │
+        └────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+        ┌────────────────────────────────────────────────────┐
+        │ 11. CREATE FINAL DASHBOARD TABLE                   │
+        │ RETURN_TO_STOCK_NEW_DASHBOARD                     │
+        │ • Fiscal week attributes (start dt, end dt)        │
+        │ • RTS metrics                                      │
+        │ • Verified metrics                                 │
+        └────────────────────────────────────────────────────┘
+
+                                   ▼
+                       **FINAL OUTPUT → Dashboard Table**
+
+Code 2 Flow Summary:
+A deep, multi-layer ETL pipeline: fiscal-week → base RX → QV2 logic → RTS logic → drug/store enrichment → fill-source/12-month history → weekly aggregates → dashboard table.
+
+⸻
+
+🎯 If you want, I can also generate:
+
+✔ A side-by-side dual diagram comparing Code 1 vs Code 2 visually
+✔ A PowerPoint slide deck version
+✔ A Swimlane flow diagram (PF, RTS, DRUG, Store, Calendar lanes)
+✔ A system architecture view (Inputs → Processing → Outputs)
+
+Just tell me!
