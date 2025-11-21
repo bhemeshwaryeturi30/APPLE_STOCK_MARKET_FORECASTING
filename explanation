@@ -1,32 +1,4 @@
 
-Absolutely — here are all three deliverables, clean, structured, and manager-ready.
-
-⸻
-
-✅ 1. Full Side-by-Side Comparison Table
-
-Code 1 vs Code 2 — Logic, Purpose, and Output
-
-Category	Code 1: RTS + Copay Analysis Query	Code 2: Return-to-Stock ETL + Dashboard Pipeline
-Primary Purpose	Exploratory analytics on RTS, copay bins, acute/generic indicators	Full production ETL pipeline to calculate RTS rates & build dashboard tables
-Date Window Logic	Uses fiscal quarter numbers → simple START_DATE, END_DATE	Uses fiscal week numbers; dynamic min/max; multiple windows (4w, 6mo, 12mo)
-RTS Logic	Simple JOIN to RTS events; assumes RTS_EVENT_ORDER = 1	Fully modeled: row_number, multiple RTS, min RTS date, RTS rates & volumes
-Verification / QV2 Logic	Uses only VERIFIED_TS	Complex: pull QV2 events via PF_XREF + PF_ACTIVITY; compute MIN_QV2_DATE, QV2_IND
-Base Script Population	Just PRESCRIPTION_FILL during quarter date range	Multi-step: WB/SOLD/RTS status from PF + PF_HISTORY (6-month window)
-Copay Analysis	FULL copay binning logic; RTS by copay	No copay logic
-Medication Attributes	ACUTE_IND, GENERIC_IND	Not used; focuses on operational behavior not clinical attributes
-Fill History Logic (12-month)	None	Detailed prior fill logic using window functions (LAG), GCN, patient history
-ReadyFill / RF Logic	None	Complex detection using RF enrollments (effective start/end), Source_CDs
-Fill Source Classification	None	Categorizes scripts as: RF, eRx, Manual, IVR/Digital, Other
-Regional Hierarchy	None	Includes district, region, area level rollup
-Final Aggregation	Several small SELECT queries	Multiple aggregated outputs (QV2-level, RTS-level, volume-level)
-Final Output Table	None (analysis-only)	Writes curated table: RETURN_TO_STOCK_NEW_DASHBOARD
-Intended Use	Data exploration, trend analysis	Enterprise dashboards, KPI reporting, repeatable weekly/monthly refresh
-Complexity Level	Medium	Very High (full ETL + multi-layer data modeling)
-Runtime	Fast	Longer (multiple joins, unions, windows, aggregations)
-Error Handling / Persistence	None	Persists intermediate layers into controlled sandbox tables
-
-
 ⸻
 
 ✅ 2. Diagram: Code 2 ETL Flow (Manager-Friendly Visual)
