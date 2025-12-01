@@ -1,0 +1,1249 @@
+﻿STATE,METRIC_NAME,PRIORITY,STORE_TYPE
+AK,Compliance & Regulatory Training,1,PHARMACY
+AK,Scans & Submissions: Document Accuracy,2,PHARMACY
+AK,Scans & Submissions: Missed Document,3,PHARMACY
+AK,CII Check-In Timeliness,4,PHARMACY
+AK,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+AK,Carry Over %,6,PHARMACY
+AK,CII State Count Completed Late,7,PHARMACY
+AK,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+AK,Inmar Returns,9,PHARMACY
+AK,Zipline,10,PHARMACY
+AK,BOP Settlement Agreements,11,PHARMACY
+AK,BOP iCAP Archer Warnings,12,PHARMACY
+AK,BOP Violations,13,PHARMACY
+AK,Submitted DEA 106/107,14,PHARMACY
+AK,Day 14 Returns,15,PHARMACY
+AK,Production Accuracy Scan,16,PHARMACY
+AK,Rx StrongPak Compliance,17,PHARMACY
+AK,IMZ e-Kit Compliance,18,PHARMACY
+AK,Cycle Count,19,PHARMACY
+AK,Zipline,20,PHARMACY
+AK,Prescription Elements,21,PHARMACY
+AK,Late Unreconciled Count Completion,22,PHARMACY
+AK,Late Ins,23,PHARMACY
+AK,Drug Disposal Documentation,24,PHARMACY
+AL,Compliance & Regulatory Training,1,PHARMACY
+AL,Scans & Submissions: Document Accuracy,2,PHARMACY
+AL,Scans & Submissions: Missed Document,3,PHARMACY
+AL,CII Check-In Timeliness,4,PHARMACY
+AL,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+AL,Carry Over %,6,PHARMACY
+AL,CII State Count Completed Late,7,PHARMACY
+AL,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+AL,Inmar Returns,9,PHARMACY
+AL,Zipline,10,PHARMACY
+AL,BOP Settlement Agreements,11,PHARMACY
+AL,BOP iCAP Archer Warnings,12,PHARMACY
+AL,BOP Violations,13,PHARMACY
+AL,Submitted DEA 106/107,14,PHARMACY
+AL,Day 14 Returns,15,PHARMACY
+AL,Production Accuracy Scan,16,PHARMACY
+AL,Rx StrongPak Compliance,17,PHARMACY
+AL,IMZ e-Kit Compliance,18,PHARMACY
+AL,Cycle Count,19,PHARMACY
+AL,Zipline,20,PHARMACY
+AL,Prescription Elements,21,PHARMACY
+AL,Late Unreconciled Count Completion,22,PHARMACY
+AL,Late Ins,23,PHARMACY
+AL,Drug Disposal Documentation,24,PHARMACY
+AR,Compliance & Regulatory Training,1,PHARMACY
+AR,Scans & Submissions: Document Accuracy,2,PHARMACY
+AR,Scans & Submissions: Missed Document,3,PHARMACY
+AR,CII Check-In Timeliness,4,PHARMACY
+AR,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+AR,Carry Over %,6,PHARMACY
+AR,CII State Count Completed Late,7,PHARMACY
+AR,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+AR,Inmar Returns,9,PHARMACY
+AR,Zipline,10,PHARMACY
+AR,BOP Settlement Agreements,11,PHARMACY
+AR,BOP iCAP Archer Warnings,12,PHARMACY
+AR,BOP Violations,13,PHARMACY
+AR,Submitted DEA 106/107,14,PHARMACY
+AR,Day 14 Returns,15,PHARMACY
+AR,Production Accuracy Scan,16,PHARMACY
+AR,Rx StrongPak Compliance,17,PHARMACY
+AR,IMZ e-Kit Compliance,18,PHARMACY
+AR,Cycle Count,19,PHARMACY
+AR,Zipline,20,PHARMACY
+AR,Prescription Elements,21,PHARMACY
+AR,Late Unreconciled Count Completion,22,PHARMACY
+AR,Late Ins,23,PHARMACY
+AR,Drug Disposal Documentation,24,PHARMACY
+AZ,Inmar Returns,1,PHARMACY
+AZ,Compliance & Regulatory Training,2,PHARMACY
+AZ,Scans & Submissions: Document Accuracy,3,PHARMACY
+AZ,Scans & Submissions: Missed Document,4,PHARMACY
+AZ,CII Check-In Timeliness,5,PHARMACY
+AZ,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+AZ,Carry Over %,7,PHARMACY
+AZ,CII State Count Completed Late,8,PHARMACY
+AZ,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+AZ,Zipline,10,PHARMACY
+AZ,BOP Settlement Agreements,11,PHARMACY
+AZ,BOP iCAP Archer Warnings,12,PHARMACY
+AZ,BOP Violations,13,PHARMACY
+AZ,Submitted DEA 106/107,14,PHARMACY
+AZ,Day 14 Returns,15,PHARMACY
+AZ,Production Accuracy Scan,16,PHARMACY
+AZ,Rx StrongPak Compliance,17,PHARMACY
+AZ,IMZ e-Kit Compliance,18,PHARMACY
+AZ,Cycle Count,19,PHARMACY
+AZ,Zipline,20,PHARMACY
+AZ,Prescription Elements,21,PHARMACY
+AZ,Late Unreconciled Count Completion,22,PHARMACY
+AZ,Late Ins,23,PHARMACY
+AZ,Drug Disposal Documentation,24,PHARMACY
+CA,Carry Over %,1,PHARMACY
+CA,Schedule Adherence,2,PHARMACY
+CA,Compliance & Regulatory Training,3,PHARMACY
+CA,Scans & Submissions: Document Accuracy,4,PHARMACY
+CA,Scans & Submissions: Missed Document,5,PHARMACY
+CA,CII Check-In Timeliness,6,PHARMACY
+CA,CIII-V & PSE Check-In Timeliness,7,PHARMACY
+CA,CII State Count Completed Late,8,PHARMACY
+CA,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+CA,Inmar Returns,10,PHARMACY
+CA,BOP Settlement Agreements,11,PHARMACY
+CA,BOP iCAP Archer Warnings,12,PHARMACY
+CA,BOP Violations,13,PHARMACY
+CA,Submitted DEA 106/107,14,PHARMACY
+CA,Day 14 Returns,15,PHARMACY
+CA,Production Accuracy Scan,16,PHARMACY
+CA,Rx StrongPak Compliance,17,PHARMACY
+CA,IMZ e-Kit Compliance,18,PHARMACY
+CA,Cycle Count,19,PHARMACY
+CA,Zipline,20,PHARMACY
+CA,Prescription Elements,21,PHARMACY
+CA,Late Unreconciled Count Completion,22,PHARMACY
+CA,Late Ins,23,PHARMACY
+CA,Drug Disposal Documentation,24,PHARMACY
+CO,Compliance & Regulatory Training,1,PHARMACY
+CO,Scans & Submissions: Document Accuracy,2,PHARMACY
+CO,Scans & Submissions: Missed Document,3,PHARMACY
+CO,CII Check-In Timeliness,4,PHARMACY
+CO,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+CO,Carry Over %,6,PHARMACY
+CO,CII State Count Completed Late,7,PHARMACY
+CO,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+CO,Inmar Returns,9,PHARMACY
+CO,Zipline,10,PHARMACY
+CO,BOP Settlement Agreements,11,PHARMACY
+CO,BOP iCAP Archer Warnings,12,PHARMACY
+CO,BOP Violations,13,PHARMACY
+CO,Submitted DEA 106/107,14,PHARMACY
+CO,Day 14 Returns,15,PHARMACY
+CO,Production Accuracy Scan,16,PHARMACY
+CO,Rx StrongPak Compliance,17,PHARMACY
+CO,IMZ e-Kit Compliance,18,PHARMACY
+CO,Cycle Count,19,PHARMACY
+CO,Zipline,20,PHARMACY
+CO,Prescription Elements,21,PHARMACY
+CO,Late Unreconciled Count Completion,22,PHARMACY
+CO,Late Ins,23,PHARMACY
+CO,Drug Disposal Documentation,24,PHARMACY
+CT,Compliance & Regulatory Training,1,PHARMACY
+CT,Scans & Submissions: Document Accuracy,2,PHARMACY
+CT,Scans & Submissions: Missed Document,3,PHARMACY
+CT,CII Check-In Timeliness,4,PHARMACY
+CT,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+CT,Carry Over %,6,PHARMACY
+CT,CII State Count Completed Late,7,PHARMACY
+CT,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+CT,Inmar Returns,9,PHARMACY
+CT,Zipline,10,PHARMACY
+CT,BOP Settlement Agreements,11,PHARMACY
+CT,BOP iCAP Archer Warnings,12,PHARMACY
+CT,BOP Violations,13,PHARMACY
+CT,Submitted DEA 106/107,14,PHARMACY
+CT,Day 14 Returns,15,PHARMACY
+CT,Production Accuracy Scan,16,PHARMACY
+CT,Rx StrongPak Compliance,17,PHARMACY
+CT,IMZ e-Kit Compliance,18,PHARMACY
+CT,Cycle Count,19,PHARMACY
+CT,Zipline,20,PHARMACY
+CT,Prescription Elements,21,PHARMACY
+CT,Late Unreconciled Count Completion,22,PHARMACY
+CT,Late Ins,23,PHARMACY
+CT,Drug Disposal Documentation,24,PHARMACY
+DC,Inmar Returns,1,PHARMACY
+DC,Compliance & Regulatory Training,2,PHARMACY
+DC,Scans & Submissions: Document Accuracy,3,PHARMACY
+DC,Scans & Submissions: Missed Document,4,PHARMACY
+DC,CII Check-In Timeliness,5,PHARMACY
+DC,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+DC,Carry Over %,7,PHARMACY
+DC,CII State Count Completed Late,8,PHARMACY
+DC,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+DC,Zipline,10,PHARMACY
+DC,BOP Settlement Agreements,11,PHARMACY
+DC,BOP iCAP Archer Warnings,12,PHARMACY
+DC,BOP Violations,13,PHARMACY
+DC,Submitted DEA 106/107,14,PHARMACY
+DC,Day 14 Returns,15,PHARMACY
+DC,Production Accuracy Scan,16,PHARMACY
+DC,Rx StrongPak Compliance,17,PHARMACY
+DC,IMZ e-Kit Compliance,18,PHARMACY
+DC,Cycle Count,19,PHARMACY
+DC,Zipline,20,PHARMACY
+DC,Prescription Elements,21,PHARMACY
+DC,Late Unreconciled Count Completion,22,PHARMACY
+DC,Late Ins,23,PHARMACY
+DC,Drug Disposal Documentation,24,PHARMACY
+DE,Compliance & Regulatory Training,1,PHARMACY
+DE,Scans & Submissions: Document Accuracy,2,PHARMACY
+DE,Scans & Submissions: Missed Document,3,PHARMACY
+DE,CII Check-In Timeliness,4,PHARMACY
+DE,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+DE,Carry Over %,6,PHARMACY
+DE,CII State Count Completed Late,7,PHARMACY
+DE,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+DE,Inmar Returns,9,PHARMACY
+DE,Zipline,10,PHARMACY
+DE,BOP Settlement Agreements,11,PHARMACY
+DE,BOP iCAP Archer Warnings,12,PHARMACY
+DE,BOP Violations,13,PHARMACY
+DE,Submitted DEA 106/107,14,PHARMACY
+DE,Day 14 Returns,15,PHARMACY
+DE,Production Accuracy Scan,16,PHARMACY
+DE,Rx StrongPak Compliance,17,PHARMACY
+DE,IMZ e-Kit Compliance,18,PHARMACY
+DE,Cycle Count,19,PHARMACY
+DE,Zipline,20,PHARMACY
+DE,Prescription Elements,21,PHARMACY
+DE,Late Unreconciled Count Completion,22,PHARMACY
+DE,Late Ins,23,PHARMACY
+DE,Drug Disposal Documentation,24,PHARMACY
+FL,Inmar Returns,1,PHARMACY
+FL,Compliance & Regulatory Training,2,PHARMACY
+FL,Scans & Submissions: Document Accuracy,3,PHARMACY
+FL,Scans & Submissions: Missed Document,4,PHARMACY
+FL,CII Check-In Timeliness,5,PHARMACY
+FL,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+FL,Carry Over %,7,PHARMACY
+FL,CII State Count Completed Late,8,PHARMACY
+FL,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+FL,Zipline,10,PHARMACY
+FL,BOP Settlement Agreements,11,PHARMACY
+FL,BOP iCAP Archer Warnings,12,PHARMACY
+FL,BOP Violations,13,PHARMACY
+FL,Submitted DEA 106/107,14,PHARMACY
+FL,Day 14 Returns,15,PHARMACY
+FL,Production Accuracy Scan,16,PHARMACY
+FL,Rx StrongPak Compliance,17,PHARMACY
+FL,IMZ e-Kit Compliance,18,PHARMACY
+FL,Cycle Count,19,PHARMACY
+FL,Zipline,20,PHARMACY
+FL,Prescription Elements,21,PHARMACY
+FL,Late Unreconciled Count Completion,22,PHARMACY
+FL,Late Ins,23,PHARMACY
+FL,Drug Disposal Documentation,24,PHARMACY
+GA,Scans & Submissions: Document Accuracy,1,PHARMACY
+GA,Scans & Submissions: Missed Document,2,PHARMACY
+GA,Compliance & Regulatory Training,3,PHARMACY
+GA,CII Check-In Timeliness,4,PHARMACY
+GA,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+GA,Carry Over %,6,PHARMACY
+GA,CII State Count Completed Late,7,PHARMACY
+GA,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+GA,Inmar Returns,9,PHARMACY
+GA,Zipline,10,PHARMACY
+GA,BOP Settlement Agreements,11,PHARMACY
+GA,BOP iCAP Archer Warnings,12,PHARMACY
+GA,BOP Violations,13,PHARMACY
+GA,Submitted DEA 106/107,14,PHARMACY
+GA,Day 14 Returns,15,PHARMACY
+GA,Production Accuracy Scan,16,PHARMACY
+GA,Rx StrongPak Compliance,17,PHARMACY
+GA,IMZ e-Kit Compliance,18,PHARMACY
+GA,Cycle Count,19,PHARMACY
+GA,Zipline,20,PHARMACY
+GA,Prescription Elements,21,PHARMACY
+GA,Late Unreconciled Count Completion,22,PHARMACY
+GA,Late Ins,23,PHARMACY
+GA,Drug Disposal Documentation,24,PHARMACY
+HI,Compliance & Regulatory Training,1,PHARMACY
+HI,Scans & Submissions: Document Accuracy,2,PHARMACY
+HI,Scans & Submissions: Missed Document,3,PHARMACY
+HI,CII Check-In Timeliness,4,PHARMACY
+HI,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+HI,Carry Over %,6,PHARMACY
+HI,CII State Count Completed Late,7,PHARMACY
+HI,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+HI,Inmar Returns,9,PHARMACY
+HI,Zipline,10,PHARMACY
+HI,BOP Settlement Agreements,11,PHARMACY
+HI,BOP iCAP Archer Warnings,12,PHARMACY
+HI,BOP Violations,13,PHARMACY
+HI,Submitted DEA 106/107,14,PHARMACY
+HI,Day 14 Returns,15,PHARMACY
+HI,Production Accuracy Scan,16,PHARMACY
+HI,Rx StrongPak Compliance,17,PHARMACY
+HI,IMZ e-Kit Compliance,18,PHARMACY
+HI,Cycle Count,19,PHARMACY
+HI,Zipline,20,PHARMACY
+HI,Prescription Elements,21,PHARMACY
+HI,Late Unreconciled Count Completion,22,PHARMACY
+HI,Late Ins,23,PHARMACY
+HI,Drug Disposal Documentation,24,PHARMACY
+IA,Carry Over %,1,PHARMACY
+IA,Schedule Adherence,2,PHARMACY
+IA,Compliance & Regulatory Training,3,PHARMACY
+IA,Scans & Submissions: Document Accuracy,4,PHARMACY
+IA,Scans & Submissions: Missed Document,5,PHARMACY
+IA,CII Check-In Timeliness,6,PHARMACY
+IA,CIII-V & PSE Check-In Timeliness,7,PHARMACY
+IA,CII State Count Completed Late,8,PHARMACY
+IA,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+IA,Inmar Returns,10,PHARMACY
+IA,BOP Settlement Agreements,11,PHARMACY
+IA,BOP iCAP Archer Warnings,12,PHARMACY
+IA,BOP Violations,13,PHARMACY
+IA,Submitted DEA 106/107,14,PHARMACY
+IA,Day 14 Returns,15,PHARMACY
+IA,Production Accuracy Scan,16,PHARMACY
+IA,Rx StrongPak Compliance,17,PHARMACY
+IA,IMZ e-Kit Compliance,18,PHARMACY
+IA,Cycle Count,19,PHARMACY
+IA,Zipline,20,PHARMACY
+IA,Prescription Elements,21,PHARMACY
+IA,Late Unreconciled Count Completion,22,PHARMACY
+IA,Late Ins,23,PHARMACY
+IA,Drug Disposal Documentation,24,PHARMACY
+ID,Compliance & Regulatory Training,1,PHARMACY
+ID,Scans & Submissions: Document Accuracy,2,PHARMACY
+ID,Scans & Submissions: Missed Document,3,PHARMACY
+ID,CII Check-In Timeliness,4,PHARMACY
+ID,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+ID,Carry Over %,6,PHARMACY
+ID,CII State Count Completed Late,7,PHARMACY
+ID,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+ID,Inmar Returns,9,PHARMACY
+ID,Zipline,10,PHARMACY
+ID,BOP Settlement Agreements,11,PHARMACY
+ID,BOP iCAP Archer Warnings,12,PHARMACY
+ID,BOP Violations,13,PHARMACY
+ID,Submitted DEA 106/107,14,PHARMACY
+ID,Day 14 Returns,15,PHARMACY
+ID,Production Accuracy Scan,16,PHARMACY
+ID,Rx StrongPak Compliance,17,PHARMACY
+ID,IMZ e-Kit Compliance,18,PHARMACY
+ID,Cycle Count,19,PHARMACY
+ID,Zipline,20,PHARMACY
+ID,Prescription Elements,21,PHARMACY
+ID,Late Unreconciled Count Completion,22,PHARMACY
+ID,Late Ins,23,PHARMACY
+ID,Drug Disposal Documentation,24,PHARMACY
+IL,Compliance & Regulatory Training,1,PHARMACY
+IL,Scans & Submissions: Document Accuracy,2,PHARMACY
+IL,Scans & Submissions: Missed Document,3,PHARMACY
+IL,CII Check-In Timeliness,4,PHARMACY
+IL,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+IL,Carry Over %,6,PHARMACY
+IL,CII State Count Completed Late,7,PHARMACY
+IL,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+IL,Inmar Returns,9,PHARMACY
+IL,Zipline,10,PHARMACY
+IL,BOP Settlement Agreements,11,PHARMACY
+IL,BOP iCAP Archer Warnings,12,PHARMACY
+IL,BOP Violations,13,PHARMACY
+IL,Submitted DEA 106/107,14,PHARMACY
+IL,Day 14 Returns,15,PHARMACY
+IL,Production Accuracy Scan,16,PHARMACY
+IL,Rx StrongPak Compliance,17,PHARMACY
+IL,IMZ e-Kit Compliance,18,PHARMACY
+IL,Cycle Count,19,PHARMACY
+IL,Zipline,20,PHARMACY
+IL,Prescription Elements,21,PHARMACY
+IL,Late Unreconciled Count Completion,22,PHARMACY
+IL,Late Ins,23,PHARMACY
+IL,Drug Disposal Documentation,24,PHARMACY
+IN,Compliance & Regulatory Training,1,PHARMACY
+IN,Scans & Submissions: Document Accuracy,2,PHARMACY
+IN,Scans & Submissions: Missed Document,3,PHARMACY
+IN,CII Check-In Timeliness,4,PHARMACY
+IN,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+IN,Carry Over %,6,PHARMACY
+IN,CII State Count Completed Late,7,PHARMACY
+IN,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+IN,Inmar Returns,9,PHARMACY
+IN,Zipline,10,PHARMACY
+IN,BOP Settlement Agreements,11,PHARMACY
+IN,BOP iCAP Archer Warnings,12,PHARMACY
+IN,BOP Violations,13,PHARMACY
+IN,Submitted DEA 106/107,14,PHARMACY
+IN,Day 14 Returns,15,PHARMACY
+IN,Production Accuracy Scan,16,PHARMACY
+IN,Rx StrongPak Compliance,17,PHARMACY
+IN,IMZ e-Kit Compliance,18,PHARMACY
+IN,Cycle Count,19,PHARMACY
+IN,Zipline,20,PHARMACY
+IN,Prescription Elements,21,PHARMACY
+IN,Late Unreconciled Count Completion,22,PHARMACY
+IN,Late Ins,23,PHARMACY
+IN,Drug Disposal Documentation,24,PHARMACY
+KS,Scans & Submissions: Document Accuracy,1,PHARMACY
+KS,Scans & Submissions: Missed Document,2,PHARMACY
+KS,Compliance & Regulatory Training,3,PHARMACY
+KS,CII Check-In Timeliness,4,PHARMACY
+KS,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+KS,Carry Over %,6,PHARMACY
+KS,CII State Count Completed Late,7,PHARMACY
+KS,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+KS,Inmar Returns,9,PHARMACY
+KS,Zipline,10,PHARMACY
+KS,BOP Settlement Agreements,11,PHARMACY
+KS,BOP iCAP Archer Warnings,12,PHARMACY
+KS,BOP Violations,13,PHARMACY
+KS,Submitted DEA 106/107,14,PHARMACY
+KS,Day 14 Returns,15,PHARMACY
+KS,Production Accuracy Scan,16,PHARMACY
+KS,Rx StrongPak Compliance,17,PHARMACY
+KS,IMZ e-Kit Compliance,18,PHARMACY
+KS,Cycle Count,19,PHARMACY
+KS,Zipline,20,PHARMACY
+KS,Prescription Elements,21,PHARMACY
+KS,Late Unreconciled Count Completion,22,PHARMACY
+KS,Late Ins,23,PHARMACY
+KS,Drug Disposal Documentation,24,PHARMACY
+KY,Compliance & Regulatory Training,1,PHARMACY
+KY,Scans & Submissions: Document Accuracy,2,PHARMACY
+KY,Scans & Submissions: Missed Document,3,PHARMACY
+KY,CII Check-In Timeliness,4,PHARMACY
+KY,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+KY,Carry Over %,6,PHARMACY
+KY,CII State Count Completed Late,7,PHARMACY
+KY,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+KY,Inmar Returns,9,PHARMACY
+KY,Zipline,10,PHARMACY
+KY,BOP Settlement Agreements,11,PHARMACY
+KY,BOP iCAP Archer Warnings,12,PHARMACY
+KY,BOP Violations,13,PHARMACY
+KY,Submitted DEA 106/107,14,PHARMACY
+KY,Day 14 Returns,15,PHARMACY
+KY,Production Accuracy Scan,16,PHARMACY
+KY,Rx StrongPak Compliance,17,PHARMACY
+KY,IMZ e-Kit Compliance,18,PHARMACY
+KY,Cycle Count,19,PHARMACY
+KY,Zipline,20,PHARMACY
+KY,Prescription Elements,21,PHARMACY
+KY,Late Unreconciled Count Completion,22,PHARMACY
+KY,Late Ins,23,PHARMACY
+KY,Drug Disposal Documentation,24,PHARMACY
+LA,Inmar Returns,1,PHARMACY
+LA,Compliance & Regulatory Training,2,PHARMACY
+LA,Scans & Submissions: Document Accuracy,3,PHARMACY
+LA,Scans & Submissions: Missed Document,4,PHARMACY
+LA,CII Check-In Timeliness,5,PHARMACY
+LA,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+LA,Carry Over %,7,PHARMACY
+LA,CII State Count Completed Late,8,PHARMACY
+LA,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+LA,Zipline,10,PHARMACY
+LA,BOP Settlement Agreements,11,PHARMACY
+LA,BOP iCAP Archer Warnings,12,PHARMACY
+LA,BOP Violations,13,PHARMACY
+LA,Submitted DEA 106/107,14,PHARMACY
+LA,Day 14 Returns,15,PHARMACY
+LA,Production Accuracy Scan,16,PHARMACY
+LA,Rx StrongPak Compliance,17,PHARMACY
+LA,IMZ e-Kit Compliance,18,PHARMACY
+LA,Cycle Count,19,PHARMACY
+LA,Zipline,20,PHARMACY
+LA,Prescription Elements,21,PHARMACY
+LA,Late Unreconciled Count Completion,22,PHARMACY
+LA,Late Ins,23,PHARMACY
+LA,Drug Disposal Documentation,24,PHARMACY
+MA,Compliance & Regulatory Training,1,PHARMACY
+MA,Scans & Submissions: Document Accuracy,2,PHARMACY
+MA,Scans & Submissions: Missed Document,3,PHARMACY
+MA,CII Check-In Timeliness,4,PHARMACY
+MA,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+MA,Carry Over %,6,PHARMACY
+MA,CII State Count Completed Late,7,PHARMACY
+MA,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+MA,Inmar Returns,9,PHARMACY
+MA,Zipline,10,PHARMACY
+MA,BOP Settlement Agreements,11,PHARMACY
+MA,BOP iCAP Archer Warnings,12,PHARMACY
+MA,BOP Violations,13,PHARMACY
+MA,Submitted DEA 106/107,14,PHARMACY
+MA,Day 14 Returns,15,PHARMACY
+MA,Production Accuracy Scan,16,PHARMACY
+MA,Rx StrongPak Compliance,17,PHARMACY
+MA,IMZ e-Kit Compliance,18,PHARMACY
+MA,Cycle Count,19,PHARMACY
+MA,Zipline,20,PHARMACY
+MA,Prescription Elements,21,PHARMACY
+MA,Late Unreconciled Count Completion,22,PHARMACY
+MA,Late Ins,23,PHARMACY
+MA,Drug Disposal Documentation,24,PHARMACY
+MD,Compliance & Regulatory Training,1,PHARMACY
+MD,Scans & Submissions: Document Accuracy,2,PHARMACY
+MD,Scans & Submissions: Missed Document,3,PHARMACY
+MD,CII Check-In Timeliness,4,PHARMACY
+MD,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+MD,Carry Over %,6,PHARMACY
+MD,CII State Count Completed Late,7,PHARMACY
+MD,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+MD,Inmar Returns,9,PHARMACY
+MD,Zipline,10,PHARMACY
+MD,BOP Settlement Agreements,11,PHARMACY
+MD,BOP iCAP Archer Warnings,12,PHARMACY
+MD,BOP Violations,13,PHARMACY
+MD,Submitted DEA 106/107,14,PHARMACY
+MD,Day 14 Returns,15,PHARMACY
+MD,Production Accuracy Scan,16,PHARMACY
+MD,Rx StrongPak Compliance,17,PHARMACY
+MD,IMZ e-Kit Compliance,18,PHARMACY
+MD,Cycle Count,19,PHARMACY
+MD,Zipline,20,PHARMACY
+MD,Prescription Elements,21,PHARMACY
+MD,Late Unreconciled Count Completion,22,PHARMACY
+MD,Late Ins,23,PHARMACY
+MD,Drug Disposal Documentation,24,PHARMACY
+ME,Compliance & Regulatory Training,1,PHARMACY
+ME,Scans & Submissions: Document Accuracy,2,PHARMACY
+ME,Scans & Submissions: Missed Document,3,PHARMACY
+ME,CII Check-In Timeliness,4,PHARMACY
+ME,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+ME,Carry Over %,6,PHARMACY
+ME,CII State Count Completed Late,7,PHARMACY
+ME,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+ME,Inmar Returns,9,PHARMACY
+ME,Zipline,10,PHARMACY
+ME,BOP Settlement Agreements,11,PHARMACY
+ME,BOP iCAP Archer Warnings,12,PHARMACY
+ME,BOP Violations,13,PHARMACY
+ME,Submitted DEA 106/107,14,PHARMACY
+ME,Day 14 Returns,15,PHARMACY
+ME,Production Accuracy Scan,16,PHARMACY
+ME,Rx StrongPak Compliance,17,PHARMACY
+ME,IMZ e-Kit Compliance,18,PHARMACY
+ME,Cycle Count,19,PHARMACY
+ME,Zipline,20,PHARMACY
+ME,Prescription Elements,21,PHARMACY
+ME,Late Unreconciled Count Completion,22,PHARMACY
+ME,Late Ins,23,PHARMACY
+ME,Drug Disposal Documentation,24,PHARMACY
+MI,Compliance & Regulatory Training,1,PHARMACY
+MI,Scans & Submissions: Document Accuracy,2,PHARMACY
+MI,Scans & Submissions: Missed Document,3,PHARMACY
+MI,CII Check-In Timeliness,4,PHARMACY
+MI,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+MI,Carry Over %,6,PHARMACY
+MI,CII State Count Completed Late,7,PHARMACY
+MI,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+MI,Inmar Returns,9,PHARMACY
+MI,Zipline,10,PHARMACY
+MI,BOP Settlement Agreements,11,PHARMACY
+MI,BOP iCAP Archer Warnings,12,PHARMACY
+MI,BOP Violations,13,PHARMACY
+MI,Submitted DEA 106/107,14,PHARMACY
+MI,Day 14 Returns,15,PHARMACY
+MI,Production Accuracy Scan,16,PHARMACY
+MI,Rx StrongPak Compliance,17,PHARMACY
+MI,IMZ e-Kit Compliance,18,PHARMACY
+MI,Cycle Count,19,PHARMACY
+MI,Zipline,20,PHARMACY
+MI,Prescription Elements,21,PHARMACY
+MI,Late Unreconciled Count Completion,22,PHARMACY
+MI,Late Ins,23,PHARMACY
+MI,Drug Disposal Documentation,24,PHARMACY
+MN,Compliance & Regulatory Training,1,PHARMACY
+MN,Scans & Submissions: Document Accuracy,2,PHARMACY
+MN,Scans & Submissions: Missed Document,3,PHARMACY
+MN,CII Check-In Timeliness,4,PHARMACY
+MN,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+MN,Carry Over %,6,PHARMACY
+MN,CII State Count Completed Late,7,PHARMACY
+MN,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+MN,Inmar Returns,9,PHARMACY
+MN,Zipline,10,PHARMACY
+MN,BOP Settlement Agreements,11,PHARMACY
+MN,BOP iCAP Archer Warnings,12,PHARMACY
+MN,BOP Violations,13,PHARMACY
+MN,Submitted DEA 106/107,14,PHARMACY
+MN,Day 14 Returns,15,PHARMACY
+MN,Production Accuracy Scan,16,PHARMACY
+MN,Rx StrongPak Compliance,17,PHARMACY
+MN,IMZ e-Kit Compliance,18,PHARMACY
+MN,Cycle Count,19,PHARMACY
+MN,Zipline,20,PHARMACY
+MN,Prescription Elements,21,PHARMACY
+MN,Late Unreconciled Count Completion,22,PHARMACY
+MN,Late Ins,23,PHARMACY
+MN,Drug Disposal Documentation,24,PHARMACY
+MO,Inmar Returns,1,PHARMACY
+MO,Compliance & Regulatory Training,2,PHARMACY
+MO,Scans & Submissions: Document Accuracy,3,PHARMACY
+MO,Scans & Submissions: Missed Document,4,PHARMACY
+MO,CII Check-In Timeliness,5,PHARMACY
+MO,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+MO,Carry Over %,7,PHARMACY
+MO,CII State Count Completed Late,8,PHARMACY
+MO,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+MO,Zipline,10,PHARMACY
+MO,BOP Settlement Agreements,11,PHARMACY
+MO,BOP iCAP Archer Warnings,12,PHARMACY
+MO,BOP Violations,13,PHARMACY
+MO,Submitted DEA 106/107,14,PHARMACY
+MO,Day 14 Returns,15,PHARMACY
+MO,Production Accuracy Scan,16,PHARMACY
+MO,Rx StrongPak Compliance,17,PHARMACY
+MO,IMZ e-Kit Compliance,18,PHARMACY
+MO,Cycle Count,19,PHARMACY
+MO,Zipline,20,PHARMACY
+MO,Prescription Elements,21,PHARMACY
+MO,Late Unreconciled Count Completion,22,PHARMACY
+MO,Late Ins,23,PHARMACY
+MO,Drug Disposal Documentation,24,PHARMACY
+MS,Compliance & Regulatory Training,1,PHARMACY
+MS,Scans & Submissions: Document Accuracy,2,PHARMACY
+MS,Scans & Submissions: Missed Document,3,PHARMACY
+MS,CII Check-In Timeliness,4,PHARMACY
+MS,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+MS,Carry Over %,6,PHARMACY
+MS,CII State Count Completed Late,7,PHARMACY
+MS,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+MS,Inmar Returns,9,PHARMACY
+MS,Zipline,10,PHARMACY
+MS,BOP Settlement Agreements,11,PHARMACY
+MS,BOP iCAP Archer Warnings,12,PHARMACY
+MS,BOP Violations,13,PHARMACY
+MS,Submitted DEA 106/107,14,PHARMACY
+MS,Day 14 Returns,15,PHARMACY
+MS,Production Accuracy Scan,16,PHARMACY
+MS,Rx StrongPak Compliance,17,PHARMACY
+MS,IMZ e-Kit Compliance,18,PHARMACY
+MS,Cycle Count,19,PHARMACY
+MS,Zipline,20,PHARMACY
+MS,Prescription Elements,21,PHARMACY
+MS,Late Unreconciled Count Completion,22,PHARMACY
+MS,Late Ins,23,PHARMACY
+MS,Drug Disposal Documentation,24,PHARMACY
+MT,Compliance & Regulatory Training,1,PHARMACY
+MT,Scans & Submissions: Document Accuracy,2,PHARMACY
+MT,Scans & Submissions: Missed Document,3,PHARMACY
+MT,CII Check-In Timeliness,4,PHARMACY
+MT,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+MT,Carry Over %,6,PHARMACY
+MT,CII State Count Completed Late,7,PHARMACY
+MT,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+MT,Inmar Returns,9,PHARMACY
+MT,Zipline,10,PHARMACY
+MT,BOP Settlement Agreements,11,PHARMACY
+MT,BOP iCAP Archer Warnings,12,PHARMACY
+MT,BOP Violations,13,PHARMACY
+MT,Submitted DEA 106/107,14,PHARMACY
+MT,Day 14 Returns,15,PHARMACY
+MT,Production Accuracy Scan,16,PHARMACY
+MT,Rx StrongPak Compliance,17,PHARMACY
+MT,IMZ e-Kit Compliance,18,PHARMACY
+MT,Cycle Count,19,PHARMACY
+MT,Zipline,20,PHARMACY
+MT,Prescription Elements,21,PHARMACY
+MT,Late Unreconciled Count Completion,22,PHARMACY
+MT,Late Ins,23,PHARMACY
+MT,Drug Disposal Documentation,24,PHARMACY
+NC,Carry Over %,1,PHARMACY
+NC,Schedule Adherence,2,PHARMACY
+NC,Inmar Returns,3,PHARMACY
+NC,Compliance & Regulatory Training,4,PHARMACY
+NC,Scans & Submissions: Document Accuracy,5,PHARMACY
+NC,Scans & Submissions: Missed Document,6,PHARMACY
+NC,CII Check-In Timeliness,7,PHARMACY
+NC,CIII-V & PSE Check-In Timeliness,8,PHARMACY
+NC,CII State Count Completed Late,9,PHARMACY
+NC,TempAlert Twice Daily Checklist Completion,10,PHARMACY
+NC,BOP Settlement Agreements,11,PHARMACY
+NC,BOP iCAP Archer Warnings,12,PHARMACY
+NC,BOP Violations,13,PHARMACY
+NC,Submitted DEA 106/107,14,PHARMACY
+NC,Day 14 Returns,15,PHARMACY
+NC,Production Accuracy Scan,16,PHARMACY
+NC,Rx StrongPak Compliance,17,PHARMACY
+NC,IMZ e-Kit Compliance,18,PHARMACY
+NC,Cycle Count,19,PHARMACY
+NC,Zipline,20,PHARMACY
+NC,Prescription Elements,21,PHARMACY
+NC,Late Unreconciled Count Completion,22,PHARMACY
+NC,Late Ins,23,PHARMACY
+NC,Drug Disposal Documentation,24,PHARMACY
+ND,Compliance & Regulatory Training,1,PHARMACY
+ND,Scans & Submissions: Document Accuracy,2,PHARMACY
+ND,Scans & Submissions: Missed Document,3,PHARMACY
+ND,CII Check-In Timeliness,4,PHARMACY
+ND,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+ND,Carry Over %,6,PHARMACY
+ND,CII State Count Completed Late,7,PHARMACY
+ND,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+ND,Inmar Returns,9,PHARMACY
+ND,Zipline,10,PHARMACY
+ND,BOP Settlement Agreements,11,PHARMACY
+ND,BOP iCAP Archer Warnings,12,PHARMACY
+ND,BOP Violations,13,PHARMACY
+ND,Submitted DEA 106/107,14,PHARMACY
+ND,Day 14 Returns,15,PHARMACY
+ND,Production Accuracy Scan,16,PHARMACY
+ND,Rx StrongPak Compliance,17,PHARMACY
+ND,IMZ e-Kit Compliance,18,PHARMACY
+ND,Cycle Count,19,PHARMACY
+ND,Zipline,20,PHARMACY
+ND,Prescription Elements,21,PHARMACY
+ND,Late Unreconciled Count Completion,22,PHARMACY
+ND,Late Ins,23,PHARMACY
+ND,Drug Disposal Documentation,24,PHARMACY
+NE,Compliance & Regulatory Training,1,PHARMACY
+NE,Scans & Submissions: Document Accuracy,2,PHARMACY
+NE,Scans & Submissions: Missed Document,3,PHARMACY
+NE,CII Check-In Timeliness,4,PHARMACY
+NE,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+NE,Carry Over %,6,PHARMACY
+NE,CII State Count Completed Late,7,PHARMACY
+NE,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+NE,Inmar Returns,9,PHARMACY
+NE,Zipline,10,PHARMACY
+NE,BOP Settlement Agreements,11,PHARMACY
+NE,BOP iCAP Archer Warnings,12,PHARMACY
+NE,BOP Violations,13,PHARMACY
+NE,Submitted DEA 106/107,14,PHARMACY
+NE,Day 14 Returns,15,PHARMACY
+NE,Production Accuracy Scan,16,PHARMACY
+NE,Rx StrongPak Compliance,17,PHARMACY
+NE,IMZ e-Kit Compliance,18,PHARMACY
+NE,Cycle Count,19,PHARMACY
+NE,Zipline,20,PHARMACY
+NE,Prescription Elements,21,PHARMACY
+NE,Late Unreconciled Count Completion,22,PHARMACY
+NE,Late Ins,23,PHARMACY
+NE,Drug Disposal Documentation,24,PHARMACY
+NH,Compliance & Regulatory Training,1,PHARMACY
+NH,Scans & Submissions: Document Accuracy,2,PHARMACY
+NH,Scans & Submissions: Missed Document,3,PHARMACY
+NH,CII Check-In Timeliness,4,PHARMACY
+NH,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+NH,Carry Over %,6,PHARMACY
+NH,CII State Count Completed Late,7,PHARMACY
+NH,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+NH,Inmar Returns,9,PHARMACY
+NH,Zipline,10,PHARMACY
+NH,BOP Settlement Agreements,11,PHARMACY
+NH,BOP iCAP Archer Warnings,12,PHARMACY
+NH,BOP Violations,13,PHARMACY
+NH,Submitted DEA 106/107,14,PHARMACY
+NH,Day 14 Returns,15,PHARMACY
+NH,Production Accuracy Scan,16,PHARMACY
+NH,Rx StrongPak Compliance,17,PHARMACY
+NH,IMZ e-Kit Compliance,18,PHARMACY
+NH,Cycle Count,19,PHARMACY
+NH,Zipline,20,PHARMACY
+NH,Prescription Elements,21,PHARMACY
+NH,Late Unreconciled Count Completion,22,PHARMACY
+NH,Late Ins,23,PHARMACY
+NH,Drug Disposal Documentation,24,PHARMACY
+NJ,TempAlert Twice Daily Checklist Completion,1,PHARMACY
+NJ,Compliance & Regulatory Training,2,PHARMACY
+NJ,Scans & Submissions: Document Accuracy,3,PHARMACY
+NJ,Scans & Submissions: Missed Document,4,PHARMACY
+NJ,CII Check-In Timeliness,5,PHARMACY
+NJ,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+NJ,Carry Over %,7,PHARMACY
+NJ,CII State Count Completed Late,8,PHARMACY
+NJ,Inmar Returns,9,PHARMACY
+NJ,Zipline,10,PHARMACY
+NJ,BOP Settlement Agreements,11,PHARMACY
+NJ,BOP iCAP Archer Warnings,12,PHARMACY
+NJ,BOP Violations,13,PHARMACY
+NJ,Submitted DEA 106/107,14,PHARMACY
+NJ,Day 14 Returns,15,PHARMACY
+NJ,Production Accuracy Scan,16,PHARMACY
+NJ,Rx StrongPak Compliance,17,PHARMACY
+NJ,IMZ e-Kit Compliance,18,PHARMACY
+NJ,Cycle Count,19,PHARMACY
+NJ,Zipline,20,PHARMACY
+NJ,Prescription Elements,21,PHARMACY
+NJ,Late Unreconciled Count Completion,22,PHARMACY
+NJ,Late Ins,23,PHARMACY
+NJ,Drug Disposal Documentation,24,PHARMACY
+NJ,Compliance & Regulatory Training,1,PHARMACY
+NJ,Scans & Submissions: Document Accuracy,2,PHARMACY
+NJ,Scans & Submissions: Missed Document,3,PHARMACY
+NJ,CII Check-In Timeliness,4,PHARMACY
+NJ,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+NJ,Carry Over %,6,PHARMACY
+NJ,CII State Count Completed Late,7,PHARMACY
+NJ,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+NJ,Inmar Returns,9,PHARMACY
+NJ,Zipline,10,PHARMACY
+NJ,BOP Settlement Agreements,11,PHARMACY
+NJ,BOP iCAP Archer Warnings,12,PHARMACY
+NJ,BOP Violations,13,PHARMACY
+NJ,Submitted DEA 106/107,14,PHARMACY
+NJ,Day 14 Returns,15,PHARMACY
+NJ,Production Accuracy Scan,16,PHARMACY
+NJ,Rx StrongPak Compliance,17,PHARMACY
+NJ,IMZ e-Kit Compliance,18,PHARMACY
+NJ,Cycle Count,19,PHARMACY
+NJ,Zipline,20,PHARMACY
+NJ,Prescription Elements,21,PHARMACY
+NJ,Late Unreconciled Count Completion,22,PHARMACY
+NJ,Late Ins,23,PHARMACY
+NJ,Drug Disposal Documentation,24,PHARMACY
+NM,Compliance & Regulatory Training,1,PHARMACY
+NM,Scans & Submissions: Document Accuracy,2,PHARMACY
+NM,Scans & Submissions: Missed Document,3,PHARMACY
+NM,CII Check-In Timeliness,4,PHARMACY
+NM,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+NM,Carry Over %,6,PHARMACY
+NM,CII State Count Completed Late,7,PHARMACY
+NM,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+NM,Inmar Returns,9,PHARMACY
+NM,Zipline,10,PHARMACY
+NM,BOP Settlement Agreements,11,PHARMACY
+NM,BOP iCAP Archer Warnings,12,PHARMACY
+NM,BOP Violations,13,PHARMACY
+NM,Submitted DEA 106/107,14,PHARMACY
+NM,Day 14 Returns,15,PHARMACY
+NM,Production Accuracy Scan,16,PHARMACY
+NM,Rx StrongPak Compliance,17,PHARMACY
+NM,IMZ e-Kit Compliance,18,PHARMACY
+NM,Cycle Count,19,PHARMACY
+NM,Zipline,20,PHARMACY
+NM,Prescription Elements,21,PHARMACY
+NM,Late Unreconciled Count Completion,22,PHARMACY
+NM,Late Ins,23,PHARMACY
+NM,Drug Disposal Documentation,24,PHARMACY
+NV,Inmar Returns,1,PHARMACY
+NV,Compliance & Regulatory Training,2,PHARMACY
+NV,Scans & Submissions: Document Accuracy,3,PHARMACY
+NV,Scans & Submissions: Missed Document,4,PHARMACY
+NV,CII Check-In Timeliness,5,PHARMACY
+NV,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+NV,Carry Over %,7,PHARMACY
+NV,CII State Count Completed Late,8,PHARMACY
+NV,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+NV,Zipline,10,PHARMACY
+NV,BOP Settlement Agreements,11,PHARMACY
+NV,BOP iCAP Archer Warnings,12,PHARMACY
+NV,BOP Violations,13,PHARMACY
+NV,Submitted DEA 106/107,14,PHARMACY
+NV,Day 14 Returns,15,PHARMACY
+NV,Production Accuracy Scan,16,PHARMACY
+NV,Rx StrongPak Compliance,17,PHARMACY
+NV,IMZ e-Kit Compliance,18,PHARMACY
+NV,Cycle Count,19,PHARMACY
+NV,Zipline,20,PHARMACY
+NV,Prescription Elements,21,PHARMACY
+NV,Late Unreconciled Count Completion,22,PHARMACY
+NV,Late Ins,23,PHARMACY
+NV,Drug Disposal Documentation,24,PHARMACY
+NY,CII State Count Completed Late,1,PHARMACY
+NY,Submitted DEA 106/107,2,PHARMACY
+NY,Late Unreconciled Count Completion,3,PHARMACY
+NY,Late Ins,4,PHARMACY
+NY,Compliance & Regulatory Training,5,PHARMACY
+NY,Scans & Submissions: Document Accuracy,6,PHARMACY
+NY,Scans & Submissions: Missed Document,7,PHARMACY
+NY,CII Check-In Timeliness,8,PHARMACY
+NY,CIII-V & PSE Check-In Timeliness,9,PHARMACY
+NY,Carry Over %,10,PHARMACY
+NY,TempAlert Twice Daily Checklist Completion,11,PHARMACY
+NY,Inmar Returns,12,PHARMACY
+NY,Zipline,13,PHARMACY
+NY,BOP Settlement Agreements,14,PHARMACY
+NY,BOP iCAP Archer Warnings,15,PHARMACY
+NY,BOP Violations,16,PHARMACY
+NY,Day 14 Returns,17,PHARMACY
+NY,Production Accuracy Scan,18,PHARMACY
+NY,Rx StrongPak Compliance,19,PHARMACY
+NY,IMZ e-Kit Compliance,20,PHARMACY
+NY,Cycle Count,21,PHARMACY
+NY,Zipline,22,PHARMACY
+NY,Prescription Elements,23,PHARMACY
+NY,Drug Disposal Documentation,24,PHARMACY
+OH,CII State Count Completed Late,1,PHARMACY
+OH,Submitted DEA 106/107,2,PHARMACY
+OH,Late Unreconciled Count Completion,3,PHARMACY
+OH,Late Ins,4,PHARMACY
+OH,Compliance & Regulatory Training,5,PHARMACY
+OH,Scans & Submissions: Document Accuracy,6,PHARMACY
+OH,Scans & Submissions: Missed Document,7,PHARMACY
+OH,CII Check-In Timeliness,8,PHARMACY
+OH,CIII-V & PSE Check-In Timeliness,9,PHARMACY
+OH,Carry Over %,10,PHARMACY
+OH,TempAlert Twice Daily Checklist Completion,11,PHARMACY
+OH,Inmar Returns,12,PHARMACY
+OH,Zipline,13,PHARMACY
+OH,BOP Settlement Agreements,14,PHARMACY
+OH,BOP iCAP Archer Warnings,15,PHARMACY
+OH,BOP Violations,16,PHARMACY
+OH,Day 14 Returns,17,PHARMACY
+OH,Production Accuracy Scan,18,PHARMACY
+OH,Rx StrongPak Compliance,19,PHARMACY
+OH,IMZ e-Kit Compliance,20,PHARMACY
+OH,Cycle Count,21,PHARMACY
+OH,Zipline,22,PHARMACY
+OH,Prescription Elements,23,PHARMACY
+OH,Drug Disposal Documentation,24,PHARMACY
+OK,Compliance & Regulatory Training,1,PHARMACY
+OK,Scans & Submissions: Document Accuracy,2,PHARMACY
+OK,Scans & Submissions: Missed Document,3,PHARMACY
+OK,CII Check-In Timeliness,4,PHARMACY
+OK,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+OK,Carry Over %,6,PHARMACY
+OK,CII State Count Completed Late,7,PHARMACY
+OK,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+OK,Inmar Returns,9,PHARMACY
+OK,Zipline,10,PHARMACY
+OK,BOP Settlement Agreements,11,PHARMACY
+OK,BOP iCAP Archer Warnings,12,PHARMACY
+OK,BOP Violations,13,PHARMACY
+OK,Submitted DEA 106/107,14,PHARMACY
+OK,Day 14 Returns,15,PHARMACY
+OK,Production Accuracy Scan,16,PHARMACY
+OK,Rx StrongPak Compliance,17,PHARMACY
+OK,IMZ e-Kit Compliance,18,PHARMACY
+OK,Cycle Count,19,PHARMACY
+OK,Zipline,20,PHARMACY
+OK,Prescription Elements,21,PHARMACY
+OK,Late Unreconciled Count Completion,22,PHARMACY
+OK,Late Ins,23,PHARMACY
+OK,Drug Disposal Documentation,24,PHARMACY
+OR,TempAlert Twice Daily Checklist Completion,1,PHARMACY
+OR,Inmar Returns,2,PHARMACY
+OR,Carry Over %,3,PHARMACY
+OR,Compliance & Regulatory Training,4,PHARMACY
+OR,Scans & Submissions: Document Accuracy,5,PHARMACY
+OR,Scans & Submissions: Missed Document,6,PHARMACY
+OR,CII Check-In Timeliness,7,PHARMACY
+OR,CIII-V & PSE Check-In Timeliness,8,PHARMACY
+OR,CII State Count Completed Late,9,PHARMACY
+OR,Zipline,10,PHARMACY
+OR,BOP Settlement Agreements,11,PHARMACY
+OR,BOP iCAP Archer Warnings,12,PHARMACY
+OR,BOP Violations,13,PHARMACY
+OR,Submitted DEA 106/107,14,PHARMACY
+OR,Day 14 Returns,15,PHARMACY
+OR,Production Accuracy Scan,16,PHARMACY
+OR,Rx StrongPak Compliance,17,PHARMACY
+OR,IMZ e-Kit Compliance,18,PHARMACY
+OR,Cycle Count,19,PHARMACY
+OR,Zipline,20,PHARMACY
+OR,Prescription Elements,21,PHARMACY
+OR,Late Unreconciled Count Completion,22,PHARMACY
+OR,Late Ins,23,PHARMACY
+OR,Drug Disposal Documentation,24,PHARMACY
+PA,Inmar Returns,1,PHARMACY
+PA,Compliance & Regulatory Training,2,PHARMACY
+PA,Scans & Submissions: Document Accuracy,3,PHARMACY
+PA,Scans & Submissions: Missed Document,4,PHARMACY
+PA,CII Check-In Timeliness,5,PHARMACY
+PA,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+PA,Carry Over %,7,PHARMACY
+PA,CII State Count Completed Late,8,PHARMACY
+PA,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+PA,Zipline,10,PHARMACY
+PA,BOP Settlement Agreements,11,PHARMACY
+PA,BOP iCAP Archer Warnings,12,PHARMACY
+PA,BOP Violations,13,PHARMACY
+PA,Submitted DEA 106/107,14,PHARMACY
+PA,Day 14 Returns,15,PHARMACY
+PA,Production Accuracy Scan,16,PHARMACY
+PA,Rx StrongPak Compliance,17,PHARMACY
+PA,IMZ e-Kit Compliance,18,PHARMACY
+PA,Cycle Count,19,PHARMACY
+PA,Zipline,20,PHARMACY
+PA,Prescription Elements,21,PHARMACY
+PA,Late Unreconciled Count Completion,22,PHARMACY
+PA,Late Ins,23,PHARMACY
+PA,Drug Disposal Documentation,24,PHARMACY
+RI,Compliance & Regulatory Training,1,PHARMACY
+RI,Scans & Submissions: Document Accuracy,2,PHARMACY
+RI,Scans & Submissions: Missed Document,3,PHARMACY
+RI,CII Check-In Timeliness,4,PHARMACY
+RI,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+RI,Carry Over %,6,PHARMACY
+RI,CII State Count Completed Late,7,PHARMACY
+RI,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+RI,Inmar Returns,9,PHARMACY
+RI,Zipline,10,PHARMACY
+RI,BOP Settlement Agreements,11,PHARMACY
+RI,BOP iCAP Archer Warnings,12,PHARMACY
+RI,BOP Violations,13,PHARMACY
+RI,Submitted DEA 106/107,14,PHARMACY
+RI,Day 14 Returns,15,PHARMACY
+RI,Production Accuracy Scan,16,PHARMACY
+RI,Rx StrongPak Compliance,17,PHARMACY
+RI,IMZ e-Kit Compliance,18,PHARMACY
+RI,Cycle Count,19,PHARMACY
+RI,Zipline,20,PHARMACY
+RI,Prescription Elements,21,PHARMACY
+RI,Late Unreconciled Count Completion,22,PHARMACY
+RI,Late Ins,23,PHARMACY
+RI,Drug Disposal Documentation,24,PHARMACY
+SC,Inmar Returns,1,PHARMACY
+SC,Compliance & Regulatory Training,2,PHARMACY
+SC,Scans & Submissions: Document Accuracy,3,PHARMACY
+SC,Scans & Submissions: Missed Document,4,PHARMACY
+SC,CII Check-In Timeliness,5,PHARMACY
+SC,CIII-V & PSE Check-In Timeliness,6,PHARMACY
+SC,Carry Over %,7,PHARMACY
+SC,CII State Count Completed Late,8,PHARMACY
+SC,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+SC,Zipline,10,PHARMACY
+SC,BOP Settlement Agreements,11,PHARMACY
+SC,BOP iCAP Archer Warnings,12,PHARMACY
+SC,BOP Violations,13,PHARMACY
+SC,Submitted DEA 106/107,14,PHARMACY
+SC,Day 14 Returns,15,PHARMACY
+SC,Production Accuracy Scan,16,PHARMACY
+SC,Rx StrongPak Compliance,17,PHARMACY
+SC,IMZ e-Kit Compliance,18,PHARMACY
+SC,Cycle Count,19,PHARMACY
+SC,Zipline,20,PHARMACY
+SC,Prescription Elements,21,PHARMACY
+SC,Late Unreconciled Count Completion,22,PHARMACY
+SC,Late Ins,23,PHARMACY
+SC,Drug Disposal Documentation,24,PHARMACY
+SD,Compliance & Regulatory Training,1,PHARMACY
+SD,Scans & Submissions: Document Accuracy,2,PHARMACY
+SD,Scans & Submissions: Missed Document,3,PHARMACY
+SD,CII Check-In Timeliness,4,PHARMACY
+SD,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+SD,Carry Over %,6,PHARMACY
+SD,CII State Count Completed Late,7,PHARMACY
+SD,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+SD,Inmar Returns,9,PHARMACY
+SD,Zipline,10,PHARMACY
+SD,BOP Settlement Agreements,11,PHARMACY
+SD,BOP iCAP Archer Warnings,12,PHARMACY
+SD,BOP Violations,13,PHARMACY
+SD,Submitted DEA 106/107,14,PHARMACY
+SD,Day 14 Returns,15,PHARMACY
+SD,Production Accuracy Scan,16,PHARMACY
+SD,Rx StrongPak Compliance,17,PHARMACY
+SD,IMZ e-Kit Compliance,18,PHARMACY
+SD,Cycle Count,19,PHARMACY
+SD,Zipline,20,PHARMACY
+SD,Prescription Elements,21,PHARMACY
+SD,Late Unreconciled Count Completion,22,PHARMACY
+SD,Late Ins,23,PHARMACY
+SD,Drug Disposal Documentation,24,PHARMACY
+TN,Compliance & Regulatory Training,1,PHARMACY
+TN,Scans & Submissions: Document Accuracy,2,PHARMACY
+TN,Scans & Submissions: Missed Document,3,PHARMACY
+TN,CII Check-In Timeliness,4,PHARMACY
+TN,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+TN,Carry Over %,6,PHARMACY
+TN,CII State Count Completed Late,7,PHARMACY
+TN,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+TN,Inmar Returns,9,PHARMACY
+TN,Zipline,10,PHARMACY
+TN,BOP Settlement Agreements,11,PHARMACY
+TN,BOP iCAP Archer Warnings,12,PHARMACY
+TN,BOP Violations,13,PHARMACY
+TN,Submitted DEA 106/107,14,PHARMACY
+TN,Day 14 Returns,15,PHARMACY
+TN,Production Accuracy Scan,16,PHARMACY
+TN,Rx StrongPak Compliance,17,PHARMACY
+TN,IMZ e-Kit Compliance,18,PHARMACY
+TN,Cycle Count,19,PHARMACY
+TN,Zipline,20,PHARMACY
+TN,Prescription Elements,21,PHARMACY
+TN,Late Unreconciled Count Completion,22,PHARMACY
+TN,Late Ins,23,PHARMACY
+TN,Drug Disposal Documentation,24,PHARMACY
+TX,CII State Count Completed Late,1,PHARMACY
+TX,Submitted DEA 106/107,2,PHARMACY
+TX,Late Unreconciled Count Completion,3,PHARMACY
+TX,Late Ins,4,PHARMACY
+TX,Compliance & Regulatory Training,5,PHARMACY
+TX,Scans & Submissions: Document Accuracy,6,PHARMACY
+TX,Scans & Submissions: Missed Document,7,PHARMACY
+TX,CII Check-In Timeliness,8,PHARMACY
+TX,CIII-V & PSE Check-In Timeliness,9,PHARMACY
+TX,Carry Over %,10,PHARMACY
+TX,TempAlert Twice Daily Checklist Completion,11,PHARMACY
+TX,Inmar Returns,12,PHARMACY
+TX,Zipline,13,PHARMACY
+TX,BOP Settlement Agreements,14,PHARMACY
+TX,BOP iCAP Archer Warnings,15,PHARMACY
+TX,BOP Violations,16,PHARMACY
+TX,Day 14 Returns,17,PHARMACY
+TX,Production Accuracy Scan,18,PHARMACY
+TX,Rx StrongPak Compliance,19,PHARMACY
+TX,IMZ e-Kit Compliance,20,PHARMACY
+TX,Cycle Count,21,PHARMACY
+TX,Zipline,22,PHARMACY
+TX,Prescription Elements,23,PHARMACY
+TX,Drug Disposal Documentation,24,PHARMACY
+UT,Compliance & Regulatory Training,1,PHARMACY
+UT,Scans & Submissions: Document Accuracy,2,PHARMACY
+UT,Scans & Submissions: Missed Document,3,PHARMACY
+UT,CII Check-In Timeliness,4,PHARMACY
+UT,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+UT,Carry Over %,6,PHARMACY
+UT,CII State Count Completed Late,7,PHARMACY
+UT,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+UT,Inmar Returns,9,PHARMACY
+UT,Zipline,10,PHARMACY
+UT,BOP Settlement Agreements,11,PHARMACY
+UT,BOP iCAP Archer Warnings,12,PHARMACY
+UT,BOP Violations,13,PHARMACY
+UT,Submitted DEA 106/107,14,PHARMACY
+UT,Day 14 Returns,15,PHARMACY
+UT,Production Accuracy Scan,16,PHARMACY
+UT,Rx StrongPak Compliance,17,PHARMACY
+UT,IMZ e-Kit Compliance,18,PHARMACY
+UT,Cycle Count,19,PHARMACY
+UT,Zipline,20,PHARMACY
+UT,Prescription Elements,21,PHARMACY
+UT,Late Unreconciled Count Completion,22,PHARMACY
+UT,Late Ins,23,PHARMACY
+UT,Drug Disposal Documentation,24,PHARMACY
+VA,Carry Over %,1,PHARMACY
+VA,Schedule Adherence,2,PHARMACY
+VA,Compliance & Regulatory Training,3,PHARMACY
+VA,Scans & Submissions: Document Accuracy,4,PHARMACY
+VA,Scans & Submissions: Missed Document,5,PHARMACY
+VA,CII Check-In Timeliness,6,PHARMACY
+VA,CIII-V & PSE Check-In Timeliness,7,PHARMACY
+VA,CII State Count Completed Late,8,PHARMACY
+VA,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+VA,Inmar Returns,10,PHARMACY
+VA,BOP Settlement Agreements,11,PHARMACY
+VA,BOP iCAP Archer Warnings,12,PHARMACY
+VA,BOP Violations,13,PHARMACY
+VA,Submitted DEA 106/107,14,PHARMACY
+VA,Day 14 Returns,15,PHARMACY
+VA,Production Accuracy Scan,16,PHARMACY
+VA,Rx StrongPak Compliance,17,PHARMACY
+VA,IMZ e-Kit Compliance,18,PHARMACY
+VA,Cycle Count,19,PHARMACY
+VA,Zipline,20,PHARMACY
+VA,Prescription Elements,21,PHARMACY
+VA,Late Unreconciled Count Completion,22,PHARMACY
+VA,Late Ins,23,PHARMACY
+VA,Drug Disposal Documentation,24,PHARMACY
+VT,Compliance & Regulatory Training,1,PHARMACY
+VT,Scans & Submissions: Document Accuracy,2,PHARMACY
+VT,Scans & Submissions: Missed Document,3,PHARMACY
+VT,CII Check-In Timeliness,4,PHARMACY
+VT,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+VT,Carry Over %,6,PHARMACY
+VT,CII State Count Completed Late,7,PHARMACY
+VT,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+VT,Inmar Returns,9,PHARMACY
+VT,Zipline,10,PHARMACY
+VT,BOP Settlement Agreements,11,PHARMACY
+VT,BOP iCAP Archer Warnings,12,PHARMACY
+VT,BOP Violations,13,PHARMACY
+VT,Submitted DEA 106/107,14,PHARMACY
+VT,Day 14 Returns,15,PHARMACY
+VT,Production Accuracy Scan,16,PHARMACY
+VT,Rx StrongPak Compliance,17,PHARMACY
+VT,IMZ e-Kit Compliance,18,PHARMACY
+VT,Cycle Count,19,PHARMACY
+VT,Zipline,20,PHARMACY
+VT,Prescription Elements,21,PHARMACY
+VT,Late Unreconciled Count Completion,22,PHARMACY
+VT,Late Ins,23,PHARMACY
+VT,Drug Disposal Documentation,24,PHARMACY
+WA,Compliance & Regulatory Training,1,PHARMACY
+WA,Scans & Submissions: Document Accuracy,2,PHARMACY
+WA,Scans & Submissions: Missed Document,3,PHARMACY
+WA,CII Check-In Timeliness,4,PHARMACY
+WA,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+WA,Carry Over %,6,PHARMACY
+WA,CII State Count Completed Late,7,PHARMACY
+WA,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+WA,Inmar Returns,9,PHARMACY
+WA,Zipline,10,PHARMACY
+WA,BOP Settlement Agreements,11,PHARMACY
+WA,BOP iCAP Archer Warnings,12,PHARMACY
+WA,BOP Violations,13,PHARMACY
+WA,Submitted DEA 106/107,14,PHARMACY
+WA,Day 14 Returns,15,PHARMACY
+WA,Production Accuracy Scan,16,PHARMACY
+WA,Rx StrongPak Compliance,17,PHARMACY
+WA,IMZ e-Kit Compliance,18,PHARMACY
+WA,Cycle Count,19,PHARMACY
+WA,Zipline,20,PHARMACY
+WA,Prescription Elements,21,PHARMACY
+WA,Late Unreconciled Count Completion,22,PHARMACY
+WA,Late Ins,23,PHARMACY
+WA,Drug Disposal Documentation,24,PHARMACY
+WI,Compliance & Regulatory Training,1,PHARMACY
+WI,Scans & Submissions: Document Accuracy,2,PHARMACY
+WI,Scans & Submissions: Missed Document,3,PHARMACY
+WI,CII Check-In Timeliness,4,PHARMACY
+WI,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+WI,Carry Over %,6,PHARMACY
+WI,CII State Count Completed Late,7,PHARMACY
+WI,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+WI,Inmar Returns,9,PHARMACY
+WI,Zipline,10,PHARMACY
+WI,BOP Settlement Agreements,11,PHARMACY
+WI,BOP iCAP Archer Warnings,12,PHARMACY
+WI,BOP Violations,13,PHARMACY
+WI,Submitted DEA 106/107,14,PHARMACY
+WI,Day 14 Returns,15,PHARMACY
+WI,Production Accuracy Scan,16,PHARMACY
+WI,Rx StrongPak Compliance,17,PHARMACY
+WI,IMZ e-Kit Compliance,18,PHARMACY
+WI,Cycle Count,19,PHARMACY
+WI,Zipline,20,PHARMACY
+WI,Prescription Elements,21,PHARMACY
+WI,Late Unreconciled Count Completion,22,PHARMACY
+WI,Late Ins,23,PHARMACY
+WI,Drug Disposal Documentation,24,PHARMACY
+WV,CII State Count Completed Late,1,PHARMACY
+WV,Late Unreconciled Count Completion,2,PHARMACY
+WV,Compliance & Regulatory Training,3,PHARMACY
+WV,Scans & Submissions: Document Accuracy,4,PHARMACY
+WV,Scans & Submissions: Missed Document,5,PHARMACY
+WV,CII Check-In Timeliness,6,PHARMACY
+WV,CIII-V & PSE Check-In Timeliness,7,PHARMACY
+WV,Carry Over %,8,PHARMACY
+WV,TempAlert Twice Daily Checklist Completion,9,PHARMACY
+WV,Inmar Returns,10,PHARMACY
+WV,Zipline,11,PHARMACY
+WV,BOP Settlement Agreements,12,PHARMACY
+WV,BOP iCAP Archer Warnings,13,PHARMACY
+WV,BOP Violations,14,PHARMACY
+WV,Submitted DEA 106/107,15,PHARMACY
+WV,Day 14 Returns,16,PHARMACY
+WV,Production Accuracy Scan,17,PHARMACY
+WV,Rx StrongPak Compliance,18,PHARMACY
+WV,IMZ e-Kit Compliance,19,PHARMACY
+WV,Cycle Count,20,PHARMACY
+WV,Zipline,21,PHARMACY
+WV,Prescription Elements,22,PHARMACY
+WV,Late Ins,23,PHARMACY
+WV,Drug Disposal Documentation,24,PHARMACY
+WY,Compliance & Regulatory Training,1,PHARMACY
+WY,Scans & Submissions: Document Accuracy,2,PHARMACY
+WY,Scans & Submissions: Missed Document,3,PHARMACY
+WY,CII Check-In Timeliness,4,PHARMACY
+WY,CIII-V & PSE Check-In Timeliness,5,PHARMACY
+WY,Carry Over %,6,PHARMACY
+WY,CII State Count Completed Late,7,PHARMACY
+WY,TempAlert Twice Daily Checklist Completion,8,PHARMACY
+WY,Inmar Returns,9,PHARMACY
+WY,Zipline,10,PHARMACY
+WY,BOP Settlement Agreements,11,PHARMACY
+WY,BOP iCAP Archer Warnings,12,PHARMACY
+WY,BOP Violations,13,PHARMACY
+WY,Submitted DEA 106/107,14,PHARMACY
+WY,Day 14 Returns,15,PHARMACY
+WY,Production Accuracy Scan,16,PHARMACY
+WY,Rx StrongPak Compliance,17,PHARMACY
+WY,IMZ e-Kit Compliance,18,PHARMACY
+WY,Cycle Count,19,PHARMACY
+WY,Zipline,20,PHARMACY
+WY,Prescription Elements,21,PHARMACY
+WY,Late Unreconciled Count Completion,22,PHARMACY
+WY,Late Ins,23,PHARMACY
+WY,Drug Disposal Documentation,24,PHARMACY
