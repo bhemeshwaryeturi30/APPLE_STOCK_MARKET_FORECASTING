@@ -1,230 +1,500 @@
-# Load data from Excel with required columns
-wsl_target_columns = [
-    "Store", "City", "State", "Scope", "Type", "ISD", "Project Status",
-    "New WB Running Feet", "Updated on MA", "Notes"
-]
+CREATE OR REPLACE PROCEDURE Return_to_stock_Analysis_Procedure()
+RETURNS STRING
+LANGUAGE SQL
+AS
+$$
+DECLARE
+FISCAL_WEEK_START INT;
+FISCAL_WEEK_END INT;
+START_DATE DATE;
+END_DATE DATE;
 
-# Check for missing columns and load data
-wsl_df_preview = pd.read_excel(wsl_excel_file, sheet_name=wsl_sheet_name, nrows=0)
-wsl_found_columns = [col for col in wsl_target_columns if col in wsl_df_preview.columns]
-wsl_missing_columns = [col for col in wsl_target_columns if col not in wsl_df_preview.columns]
+BEGIN
 
-# Show only missing columns (if any)
-if wsl_missing_columns:
-    print(f"⚠️  Missing {len(wsl_missing_columns)} columns:")
-    for col in wsl_missing_columns:
-        print(f"   - {col}")
-else:
-    print(f"✅ All {len(wsl_target_columns)} columns found!")
+-- Load fiscal parameters from data prep procedure
+SELECT FISCAL_WEEK_START, FISCAL_WEEK_END, START_DATE, END_DATE 
+INTO :FISCAL_WEEK_START, :FISCAL_WEEK_END, :START_DATE, :END_DATE 
+FROM DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_FISCAL_PARAMS;
 
-# Load the data
-if wsl_found_columns:
-    wsl_df = pd.read_excel(wsl_excel_file, sheet_name=wsl_sheet_name, usecols=wsl_found_columns)
-    print(f"\n✅ Loaded {wsl_df.shape[0]:,} rows × {wsl_df.shape[1]} columns")
-else:
-    print("❌ No matching columns found.")
-    wsl_df = None
-# WSL Data Validation and Type Fixing
-if wsl_df is None:
-    print("❌ No WSL data available for validation.")
-else:
-    print("📊 WSL DATASET VALIDATION")
-    print("="*50)
+-- Load prepared base tables
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX AS (
+SELECT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_BASE_RX
+);
 
-    print(f"WSL Dataset shape: {wsl_df.shape[0]:,} rows × {wsl_df.shape[1]} columns")
-    print(f"WSL Memory usage: {wsl_df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+CREATE OR REPLACE TEMPORARY TABLE FINAL_VERIFICATION AS (
+SELECT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_FINAL_VERIFICATION
+);
 
-    # Check for missing values in WSL data
-    wsl_missing_summary = wsl_df.isnull().sum()
-    if wsl_missing_summary.any():
-        print(f"\n⚠️  Missing values in WSL data:")
-        for col, missing_count in wsl_missing_summary[wsl_missing_summary > 0].items():
-            print(f"   {col}: {missing_count:,} missing ({missing_count/len(wsl_df)*100:.1f}%)")
-    else:
-        print(f"\n✅ No missing values found in WSL data")
+CREATE OR REPLACE TEMPORARY TABLE RETURN_TO_STOCK AS (
+SELECT * FROM DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_RETURN_TO_STOCK
+);
 
-    # Fix data types for Snowflake compatibility
-    print(f"\n🔧 Fixing WSL data types for Snowflake compatibility...")
+---------------BREAKING DOWN AT THE PRESCRIPTION LEVEL-----------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----only taking the first instance that return to stock occurred. This will not take into consideration if the Rx was returned to stock multiple times.
+
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX_STEP1 AS ( 
+SELECT 
+  BASE.RX_NBR 
+, BASE.STORE_NBR 
+, BASE.FILL_NBR 
+, MIN(QV2_DATE) AS MIN_QV2_DATE
+FROM BASE_RX AS BASE 
+JOIN FINAL_VERIFICATION AS VERF 
+ON BASE.RX_NBR = VERF.RX_NBR 
+AND BASE.FILL_NBR = VERF.FILL_NBR 
+AND BASE.STORE_NBR = VERF.STORE_NBR
+GROUP BY 1,2,3
+);
+
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX_STEP2 AS ( 
+SELECT 
+   BASE.RX_NBR 
+ , BASE.STORE_NBR 
+ , BASE.FILL_NBR
+ , MIN(RTS_DATE) AS MIN_RTS_DATE
+FROM BASE_RX AS BASE 
+LEFT JOIN RETURN_TO_STOCK AS INV 
+ON INV.STORE_NBR = BASE.STORE_NBR 
+AND INV.DELETED_FILL_NBR = BASE.FILL_NBR 
+AND INV.DELETED_RX_NBR = BASE.RX_NBR
+GROUP BY 1,2,3
+);
+
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX_STEP3 AS ( 
+SELECT 
+   STEP1.RX_NBR 
+ , STEP1.STORE_NBR 
+ , STEP1.FILL_NBR
+ , STEP1.MIN_QV2_DATE 
+ , STEP2.MIN_RTS_DATE
+ , CASE 
+    WHEN STEP1.MIN_QV2_DATE IS NOT NULL 
+    THEN 1 
+    ELSE 0 
+    END AS QV2_IND
+ , CASE 
+    WHEN STEP2.MIN_RTS_DATE IS NOT NULL 
+    THEN 1 
+    ELSE 0 
+    END AS RTS_INVENTORY_IND 
+FROM BASE_RX_STEP1 AS STEP1 
+LEFT JOIN BASE_RX_STEP2 AS STEP2 
+ON STEP1.RX_NBR = STEP2.RX_NBR 
+AND STEP1.STORE_NBR = STEP2.STORE_NBR 
+AND STEP1.FILL_NBR = STEP2.FILL_NBR
+);
+
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX_STEP4 AS ( 
+SELECT 
+     BASE. * 
+   , PF.NDC
+   , PF.SOURCE_CD
+   , PF.RXC_PATIENT_ID
+   , PF.PRESCRIPTION_FILL_TS
+   , PF.POS_TXN_TS
+   , DRG.GCN
+   , STR.RX_AREA_NBR
+   , STR.RX_DISTRICT_NBR
+   , STR.RX_REGION_NBR
+FROM BASE_RX_STEP3 AS BASE
+JOIN (SELECT 
+        RX_NBR 
+      , STORE_NBR 
+      , FILL_NBR 
+      , SOURCE_CD 
+      , NDC 
+      , RXC_PATIENT_ID 
+      , POS_TXN_TS
+      , PRESCRIPTION_FILL_TS
+  FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL AS PF 
+  WHERE PRESCRIPTION_FILL_TS > DATEADD(MONTH, -12, :START_DATE)
+  ) AS PF
+ON BASE.RX_NBR = PF.RX_NBR 
+AND BASE.STORE_NBR = PF.STORE_NBR 
+AND BASE.FILL_NBR = PF.FILL_NBR
+JOIN CORE_RX.CURATED_LOCATION.STORE AS STR 
+ON PF.STORE_NBR = STR.STORE_NBR
+LEFT JOIN CORE_RX.CURATED_PRODUCT.DRUG AS DRG 
+ON PF.NDC = DRG.NDC
+);
     
-    # Handle ISD column as date - convert to string format that Snowflake recognizes
-    if 'ISD' in wsl_df.columns:
-        print("Converting ISD column to datetime and then to string format...")
-        try:
-            # First convert to datetime
-            wsl_df['ISD'] = pd.to_datetime(wsl_df['ISD'], errors='coerce')
-            # Then convert to string format that Snowflake will recognize as date
-            wsl_df['ISD'] = wsl_df['ISD'].dt.strftime('%Y-%m-%d')
-            # Replace 'NaT' string with None for missing dates
-            wsl_df['ISD'] = wsl_df['ISD'].replace('NaT', None)
-            print("✅ ISD column converted to date string format (YYYY-MM-DD)")
-        except Exception as e:
-            print(f"⚠️  Warning: Could not convert ISD to datetime: {str(e)}")
-            wsl_df['ISD'] = wsl_df['ISD'].astype(str).replace('nan', None)
+-- ------------------------------
+--     -------GRABBING THE FILL SOURCE / SCHEDULED REASON FOR THE SCRIPTS-------------------------------------------------------------------
+CREATE OR REPLACE TEMPORARY TABLE RF_FILL_SCRIPTS_STEP1 AS ( 
+SELECT
+      PF.RX_NBR 
+    , PF.STORE_NBR 
+    , PF.FILL_NBR 
+    , PF.PRESCRIPTION_FILL_TS 
+    , PF.SOURCE_CD 
+    , PF.LAST_UPDATED_TS
+FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL AS PF
+JOIN BASE_RX_STEP4 AS BASE
+    ON PF.RX_NBR = BASE.RX_NBR 
+    AND PF.STORE_NBR = BASE.STORE_NBR 
+    AND PF.FILL_NBR = BASE.FILL_NBR
+);
+
+CREATE OR REPLACE TEMPORARY TABLE RF_FILL_SCRIPTS_STEP2 AS (
+SELECT 
+     PF.RX_NBR 
+   , PF.STORE_NBR 
+   , PF.FILL_NBR 
+   , PF.PRESCRIPTION_FILL_TS 
+   , PF.SOURCE_CD 
+   , PF.LAST_UPDATED_TS
+FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL_HISTORY AS PF 
+JOIN BASE_RX_STEP4 AS BASE 
+    ON PF.RX_NBR = BASE.RX_NBR 
+    AND PF.STORE_NBR = BASE.STORE_NBR 
+    AND PF.FILL_NBR = BASE.FILL_NBR
+);
+
+-- --only looking at the first instance of the script.
+CREATE OR REPLACE TEMPORARY TABLE RF_FILL_SCRIPTS_STEP3 AS ( 
+SELECT *
+FROM (
+   SELECT *
+   FROM RF_FILL_SCRIPTS_STEP1 
+   UNION
+   SELECT *
+   FROM RF_FILL_SCRIPTS_STEP2)
+QUALIFY 
+    ROW_NUMBER()OVER(PARTITION BY RX_NBR, STORE_NBR, FILL_NBR ORDER BY LAST_UPDATED_TS ASC) = 1
+);
+        
+CREATE OR REPLACE TEMPORARY TABLE RF_FILL_SCRIPTS_STEP4 AS (
+SELECT DISTINCT 
+         STORE_NBR
+       , RX_NBR
+       , FILL_NBR
+       , PRESCRIPTION_FILL_TS
+FROM (
+SELECT DISTINCT 
+          STORE_NBR
+        , RX_NBR
+        , FILL_NBR
+        , PRESCRIPTION_FILL_TS
+        , SOURCE_CD
+FROM RF_FILL_SCRIPTS_STEP3
+WHERE
+    SOURCE_CD IN (6,25)   
+UNION        
+SELECT DISTINCT 
+          a.STORE_NBR 
+        , a.RX_NBR 
+        , a.FILL_NBR 
+        , a.PRESCRIPTION_FILL_TS 
+        , a.SOURCE_CD
+FROM RF_FILL_SCRIPTS_STEP3 a
+INNER JOIN CORE_RX.CURATED_SCRIPT.READYFILL_RXC_SCRIPT rf    
+     ON a.STORE_NBR = rf.STORE_NBR
+     AND a.RX_NBR = rf.RX_NBR
+     AND rf.READYFILL_ENROLL_STATUS_CD = 'E'
+     AND a.PRESCRIPTION_FILL_TS BETWEEN TO_DATE(rf.EFFECTIVE_START_TS) AND TO_DATE(rf.EFFECTIVE_END_TS)
+WHERE 
+    SOURCE_CD IN (1,4,24)) a
+);
+        
+CREATE OR REPLACE TEMPORARY TABLE FORMER_FILLS AS ( 
+SELECT DISTINCT
+      PF.RX_NBR 
+    , PF.STORE_NBR 
+    , PF.FILL_NBR 
+    , PF.PRESCRIPTION_FILL_TS 
+    , DRG.GCN
+    , PF.SCHEDULE_FILL_REASON_ID
+    , PF.RXC_PATIENT_ID
+    , PF.SOURCE_CD
+    , PF.POS_TXN_TS
+FROM 
+(SELECT 
+      RX_NBR 
+    , STORE_NBR 
+    , FILL_NBR 
+    , PRESCRIPTION_FILL_TS 
+    , SCHEDULE_FILL_REASON_ID
+    , RXC_PATIENT_ID
+    , POS_TXN_TS
+    , NDC
+    , SOURCE_CD
+FROM CORE_RX.CURATED_SCRIPT.PRESCRIPTION_FILL
+WHERE PRESCRIPTION_FILL_TS > DATEADD(MONTH, -12, :START_DATE)
+) AS PF
+JOIN CORE_RX.CURATED_PRODUCT.DRUG AS DRG
+    ON PF.NDC = DRG.NDC
+JOIN BASE_RX_STEP4 AS BASE
+    ON BASE.RXC_PATIENT_ID = PF.RXC_PATIENT_ID 
+    AND BASE.GCN = DRG.GCN
+);
+
+CREATE OR REPLACE TEMPORARY TABLE PRV_RX AS ( 
+SELECT DISTINCT
+        RX_NBR 
+      , STORE_NBR 
+      , FILL_NBR
+      , LAG(SCHEDULE_FILL_REASON_ID) OVER(PARTITION BY RXC_PATIENT_ID, GCN ORDER BY PRESCRIPTION_FILL_TS DESC) AS PREV_SCHEDULE_RSN
+      , LAG(POS_TXN_TS) OVER(PARTITION BY RXC_PATIENT_ID, GCN ORDER BY PRESCRIPTION_FILL_TS DESC) AS PREV_POS_TXN_TS
+FROM FORMER_FILLS
+);
     
-    # Handle integer columns
-    wsl_int_columns = ['STORE', 'NEW_WB_RUNNING_FEET']  # Using cleaned column names
-    for col in wsl_int_columns:
-        if col in wsl_df.columns:
-            print(f"Converting {col} column to integer...")
-            try:
-                wsl_df[col] = pd.to_numeric(wsl_df[col], errors='coerce').round().astype('Int64')
-                print(f"✅ {col} column converted to integer")
-            except Exception as e:
-                print(f"⚠️  Warning: Could not convert {col} to integer: {str(e)}")
-                wsl_df[col] = wsl_df[col].astype(str).replace('nan', None)
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX_STEP5 AS ( 
+SELECT DISTINCT
+        BASE. *
+      , PRV.PREV_SCHEDULE_RSN
+      , PRV.PREV_POS_TXN_TS
+      , DATEDIFF(MONTH,PREV_POS_TXN_TS, BASE.POS_TXN_TS) AS MONTHS_BETWEEN_LAST_FILL 
+      , CASE 
+            WHEN MONTHS_BETWEEN_LAST_FILL BETWEEN 0 AND 12 THEN 'FILL HISTORY IN LAST YEAR'
+            ELSE 'NO FILL HISTORY IN LAST YEAR'
+        END AS FILL_HISTORY_IND
+      , CASE 
+            WHEN BASE.FILL_NBR = 0 THEN 'FILL 00'
+            ELSE 'FILL 01+'
+         END AS FILL_NUMBER
+     , CASE 
+             --WHEN PRV.PREV_SCHEDULE_RSN IN ('3','9','15') THEN 'RF'
+             --WHEN PRV.PREV_SCHEDULE_RSN IS NOT NULL AND PRV.PREV_SCHEDULE_RSN NOT IN ('3','9','15') THEN 'SCHEDULED - NON RF'
+             WHEN RF.RX_NBR IS NOT NULL THEN 'RF'
+             WHEN PRV.PREV_SCHEDULE_RSN IS NULL AND DIM.RX_FILL_SOURCE_DSC IN ('PPI (eRx)') THEN 'eRx'
+             WHEN PRV.PREV_SCHEDULE_RSN IS NULL AND DIM.RX_FILL_SOURCE_DSC IN ('Manual Data Entry') THEN 'Manual Data Entry'
+             WHEN PRV.PREV_SCHEDULE_RSN IS NULL AND DIM.RX_FILL_SOURCE_DSC IN ('IVR','DIGITAL') THEN 'IVR/Digital'
+             ELSE 'Other'
+       END AS FILL_SOURCE 
+     , DATEDIFF(DAY, MIN_RTS_DATE, BASE.POS_TXN_TS) AS DAYS_BETWEEN_RTS_AND_SOLD
+FROM BASE_RX_STEP4 AS BASE 
+JOIN PRV_RX AS PRV
+    ON BASE.RX_NBR = PRV.RX_NBR 
+    AND BASE.FILL_NBR = PRV.FILL_NBR 
+    AND BASE.STORE_NBR = PRV.STORE_NBR
+LEFT JOIN CORE_RX.CURATED_SCRIPT.DIM_RX_FILL_SOURCE AS DIM 
+    ON DIM.RX_FILL_SOURCE_CD = BASE.SOURCE_CD
+
+LEFT JOIN RF_FILL_SCRIPTS_STEP4 AS RF 
+    ON BASE.RX_NBR = RF.RX_NBR 
+    AND BASE.STORE_NBR = RF.STORE_NBR 
+    AND BASE.FILL_NBR = RF.FILL_NBR
+);
+---------------------------------------------------------------------------------------------------------
+---------TYING THE ACTIVITIES TO THE FISCAL WEEKS, DEN/NUM FIS WEEKS WILL BE TIED TO DIFFERENT DATES-----
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX_QV2_FISCAL_WEEK_AGG AS (
+SELECT 
+      FISCAL_WEEK_NBR
+    , FISCAL_MONTH_NBR
+    , RX_AREA_NBR 
+    , RX_REGION_NBR 
+    , RX_DISTRICT_NBR
+    , FILL_NUMBER
+    , FILL_HISTORY_IND
+    , FILL_SOURCE
+    , COUNT(
+            CASE WHEN QV2_IND = 1 THEN RX_NBR
+            ELSE NULL END) AS TTL_VERIFIED
+    , COUNT( 
+            CASE WHEN RTS_INVENTORY_IND = 1 
+            AND DAYS_BETWEEN_RTS_AND_SOLD BETWEEN 0 AND 5 THEN RX_NBR
+            ELSE NULL END) AS TTL_RTS_AND_SOLD_WITHIN_FIVE_DAYS 
+    , COUNT( 
+            CASE WHEN RTS_INVENTORY_IND = 1
+            AND DAYS_BETWEEN_RTS_AND_SOLD BETWEEN 0 AND 30 THEN RX_NBR 
+            ELSE NULL END) AS TTL_RTS_AND_SOLD_WITHIN_THIRTY_DAYS 
+    , COUNT( 
+            CASE WHEN RTS_INVENTORY_IND = 1
+            AND DAYS_BETWEEN_RTS_AND_SOLD IS NOT NULL THEN RX_NBR 
+            ELSE NULL END) AS TTL_RTS_AND_SOLD_NO_TIME_LIMIT
+FROM BASE_RX_STEP5 AS BASE 
+
+JOIN (SELECT 
+          FISCAL_WEEK_NBR
+        , FISCAL_MONTH_NBR 
+        , START_DT 
+        , END_DT
+      FROM CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK
+      WHERE FISCAL_WEEK_NBR BETWEEN :FISCAL_WEEK_START AND :FISCAL_WEEK_END) AS FIS 
+    ON TO_DATE(BASE.MIN_QV2_DATE) BETWEEN FIS.START_DT AND FIS.END_DT
+GROUP BY 1,2,3,4,5,6,7,8
+);
     
-    # Convert all other columns to strings to avoid mixed types
-    special_columns = ['ISD'] + wsl_int_columns
-    other_columns = [col for col in wsl_df.columns if col not in special_columns]
-    for col in other_columns:
-        # Convert to string and handle NaN values
-        wsl_df[col] = wsl_df[col].astype(str).replace('nan', None)
+CREATE OR REPLACE TEMPORARY TABLE BASE_RX_RTS_FISCAL_WEEK_AGG AS (
+SELECT 
+      FISCAL_WEEK_NBR
+    , FISCAL_MONTH_NBR
+    , RX_AREA_NBR 
+    , RX_REGION_NBR 
+    , RX_DISTRICT_NBR
+    , FILL_NUMBER
+    , FILL_HISTORY_IND
+    , FILL_SOURCE
+    , COUNT(
+            CASE WHEN RTS_INVENTORY_IND = 1 THEN RX_NBR
+            ELSE NULL END) AS TTL_RTS
+FROM BASE_RX_STEP5 AS BASE 
+JOIN (SELECT 
+         FISCAL_WEEK_NBR
+        , FISCAL_MONTH_NBR 
+        , START_DT 
+        , END_DT
+      FROM CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK
+      WHERE FISCAL_WEEK_NBR BETWEEN :FISCAL_WEEK_START AND :FISCAL_WEEK_END) AS FIS 
+    ON TO_DATE(BASE.MIN_RTS_DATE) BETWEEN FIS.START_DT AND FIS.END_DT
+GROUP BY 1,2,3,4,5,6,7,8
+); 
     
-    # print("✅ WSL data types fixed:")
-    # print("ISD column converted to date string format (YYYY-MM-DD)")
-    # print("STORE and NEW_WB_RUNNING_FEET columns converted to integers")
-    # print("All other columns converted to strings with None for missing values")
+-- --BROKEN DOWN AT THE FISCAL WEEK/STORE LEVEL AND IS AT THE PRESCRIPTION LEVEL 
+-- --DOES NOT TAKE INTO ACCOUNT IF A PRESCRIPTION IS RETURNED TO STOCK MULTIPLE TIMES OR NOT
+CREATE OR REPLACE TEMPORARY TABLE RX_LEVEL_FINAL_TABLE AS (
+SELECT 
+      QV2.FISCAL_WEEK_NBR
+    , QV2.FISCAL_MONTH_NBR
+    , QV2.RX_AREA_NBR 
+    , QV2.RX_REGION_NBR 
+    , QV2.RX_DISTRICT_NBR
+    , QV2.FILL_NUMBER
+    , QV2.FILL_HISTORY_IND
+    , QV2.FILL_SOURCE
+    , QV2.TTL_VERIFIED 
+    , RTS.TTL_RTS
+    , CAST(RTS.TTL_RTS AS DECIMAL(14,4)) / CAST(QV2.TTL_VERIFIED AS DECIMAL(14,4)) AS RTS_RATE
+    , QV2.TTL_RTS_AND_SOLD_WITHIN_FIVE_DAYS  
+    , QV2.TTL_RTS_AND_SOLD_WITHIN_THIRTY_DAYS  
+    , QV2.TTL_RTS_AND_SOLD_NO_TIME_LIMIT
+FROM BASE_RX_QV2_FISCAL_WEEK_AGG AS QV2
+LEFT JOIN BASE_RX_RTS_FISCAL_WEEK_AGG AS RTS
+    ON QV2.FISCAL_WEEK_NBR = RTS.FISCAL_WEEK_NBR
+    AND QV2.FISCAL_MONTH_NBR = RTS.FISCAL_MONTH_NBR
+    AND QV2.RX_AREA_NBR = RTS.RX_AREA_NBR 
+    AND QV2.RX_REGION_NBR = RTS.RX_REGION_NBR
+    AND QV2.RX_DISTRICT_NBR = RTS.RX_DISTRICT_NBR
+    AND QV2.FILL_NUMBER = RTS.FILL_NUMBER 
+    AND QV2.FILL_HISTORY_IND = RTS.FILL_HISTORY_IND
+    AND QV2.FILL_SOURCE = RTS.FILL_SOURCE
+);
+
+-- ----------------------------------------------VOLUME LEVEL METRIC------------------------------------
+-- ------------IDENTIFIES THE INSTANCES THAT A SCRIPT IS RETURNED TO STOCK/FINAL VERIFIED---------------   
+-- -----------------------------------------------------------------------------------------------------   
+CREATE OR REPLACE TEMPORARY TABLE FISCAL_WEEK_AGG_RTS_VOLUME AS (    
+SELECT 
+      FISCAL_WEEK_NBR
+    , FISCAL_MONTH_NBR
+    , RX_AREA_NBR 
+    , RX_REGION_NBR 
+    , RX_DISTRICT_NBR
+    , FILL_NUMBER
+    , FILL_HISTORY_IND
+    , FILL_SOURCE
+    , COUNT(RTS.DELETED_RX_NBR) AS TTL_RTS
+FROM RETURN_TO_STOCK AS RTS 
+JOIN BASE_RX_STEP5 AS BASE 
+    ON RTS.DELETED_RX_NBR = BASE.RX_NBR 
+    AND RTS.STORE_NBR = BASE.STORE_NBR 
+    AND RTS.DELETED_FILL_NBR = BASE.FILL_NBR
+JOIN (SELECT 
+         FISCAL_WEEK_NBR
+        , FISCAL_MONTH_NBR 
+        , START_DT 
+        , END_DT
+      FROM CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK
+      WHERE FISCAL_WEEK_NBR BETWEEN :FISCAL_WEEK_START AND :FISCAL_WEEK_END) AS FIS 
+    ON TO_DATE(RTS.RTS_DATE) BETWEEN FIS.START_DT AND FIS.END_DT
+GROUP BY 1,2,3,4,5,6,7,8
+); 
+
+CREATE OR REPLACE TEMPORARY TABLE FISCAL_WEEK_AGG_QV2_VOLUME AS (    
+SELECT 
+      FISCAL_WEEK_NBR
+    , FISCAL_MONTH_NBR
+    , RX_AREA_NBR 
+    , RX_REGION_NBR 
+    , RX_DISTRICT_NBR
+    , FILL_NUMBER
+    , FILL_HISTORY_IND
+    , FILL_SOURCE
+    , COUNT(QV2.RX_NBR) AS TTL_QV2
+FROM FINAL_VERIFICATION AS QV2
+
+JOIN BASE_RX_STEP5 AS BASE 
+    ON QV2.RX_NBR = BASE.RX_NBR 
+    AND QV2.STORE_NBR = BASE.STORE_NBR 
+    AND QV2.FILL_NBR = BASE.FILL_NBR
+
+JOIN (SELECT 
+         FISCAL_WEEK_NBR
+        , FISCAL_MONTH_NBR 
+        , START_DT 
+        , END_DT
+      FROM CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK
+      WHERE FISCAL_WEEK_NBR BETWEEN :FISCAL_WEEK_START AND :FISCAL_WEEK_END) AS FIS 
+    ON TO_DATE(QV2.QV2_DATE) BETWEEN FIS.START_DT AND FIS.END_DT 
+GROUP BY 1,2,3,4,5,6,7,8
+); 
+
+--     --THIS HAS THE RETURN TO STOCK RATE BROKEN DOWN AT THE FISCAL WEEK / STORE NUMBER AND IS THE VOLUME. 
+--     --THIS TAKES INTO CONSIDERATION THE NUMBER OF TIMES THAT A SCRIPT IS RTS/FINAL VERIFIED. 
+CREATE OR REPLACE TEMPORARY TABLE VOLUME_LEVEL_FINAL_TABLE AS ( 
+SELECT 
+      QV2.FISCAL_WEEK_NBR
+    , QV2.FISCAL_MONTH_NBR
+    , QV2.RX_AREA_NBR 
+    , QV2.RX_REGION_NBR 
+    , QV2.RX_DISTRICT_NBR
+    , QV2.FILL_NUMBER
+    , QV2.FILL_HISTORY_IND
+    , QV2.FILL_SOURCE
+    , RTS.TTL_RTS AS TTL_RTS_VOLUME
+    , QV2.TTL_QV2 AS TTL_QV2_VOLUME
+    , CAST(TTL_RTS_VOLUME AS DECIMAL(14,4)) / CAST(TTL_QV2_VOLUME AS DECIMAL(14,4)) AS RTS_VOLUME_RATE
+FROM FISCAL_WEEK_AGG_QV2_VOLUME AS QV2
+LEFT JOIN FISCAL_WEEK_AGG_RTS_VOLUME AS RTS
+    ON QV2.FISCAL_WEEK_NBR = RTS.FISCAL_WEEK_NBR
+    AND QV2.FISCAL_MONTH_NBR = RTS.FISCAL_MONTH_NBR
+    AND QV2.RX_AREA_NBR = RTS.RX_AREA_NBR 
+    AND QV2.RX_REGION_NBR = RTS.RX_REGION_NBR
+    AND QV2.RX_DISTRICT_NBR = RTS.RX_DISTRICT_NBR
+    AND QV2.FILL_NUMBER = RTS.FILL_NUMBER 
+    AND QV2.FILL_HISTORY_IND = RTS.FILL_HISTORY_IND
+    AND QV2.FILL_SOURCE = RTS.FILL_SOURCE 
+);
+
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.RETURN_TO_STOCK_NEW_DASHBOARD AS ( 
+SELECT RX. *,
+       VL.TTL_RTS_VOLUME, 
+       VL.TTL_QV2_VOLUME
+FROM RX_LEVEL_FINAL_TABLE AS RX 
+LEFT JOIN VOLUME_LEVEL_FINAL_TABLE AS VL 
+     ON RX.FISCAL_WEEK_NBR = VL.FISCAL_WEEK_NBR
+     AND RX.FISCAL_MONTH_NBR = VL.FISCAL_MONTH_NBR
+     AND RX.RX_AREA_NBR = VL.RX_AREA_NBR 
+     AND RX.RX_REGION_NBR = VL.RX_REGION_NBR
+     AND RX.RX_DISTRICT_NBR = VL.RX_DISTRICT_NBR
+     AND RX.FILL_NUMBER = VL.FILL_NUMBER 
+     AND RX.FILL_HISTORY_IND = VL.FILL_HISTORY_IND
+     AND RX.FILL_SOURCE = VL.FILL_SOURCE 
+    );
+
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.RETURN_TO_STOCK_NEW_DASHBOARD_2 AS (
+SELECT 
+    DL. *, 
+    FIS.START_DT, 
+    FIS.END_DT, 
+    FIS.FISCAL_WEEK_DSC
+FROM DL_RX_OPERATION.RX_OPS_SANDBOX.RETURN_TO_STOCK_NEW_DASHBOARD AS DL 
+LEFT JOIN CORE_FSSC.CURATED_CALENDAR.FISCAL_WEEK AS FIS 
+    ON DL.FISCAL_WEEK_NBR = FIS.FISCAL_WEEK_NBR);
+
     
-    # Show final data types
-    print(f"\nFinal WSL data types for Snowflake:")
-    for col, dtype in wsl_df.dtypes.items():
-        print(f"   {col}: {dtype}")
-    
-    # Show sample of ISD values to verify format
-    if 'ISD' in wsl_df.columns:
-        print(f"\nSample ISD values:")
-        sample_isd = wsl_df['ISD'].dropna().head(5)
-        for i, val in enumerate(sample_isd, 1):
-            print(f"   {i}. {val}")
-    
-    print(f"\n✅ WSL data ready for Snowflake upload!")
-# WSL Snowflake Upload Configuration and Upload
-if wsl_df is None:
-    print("❌ Cannot upload WSL data - no data available.")
-else:
-    # Snowflake connection parameters for WSL data
-    wsl_database = 'DL_RX_OPERATION'
-    wsl_schema = 'RX_OPS_SANDBOX'
-    wsl_role = 'GRP-CN-SNOWFLK-PROD-RX-ANALYTICS-BI-SE'
-    wsl_table_name = 'RX_LAYOUT_CONSTRUCTION_PROJECT_TRACKER_FILE_DATA_DUMP'  # Update this with your desired table name for WSL data
-    wsl_userName = 'bhemeshwar.yeturi@cvshealth.com'
-    
-    print("Connecting to Snowflake for WSL data upload...")
-    
-    try:
-        # Connect to Snowflake using external browser authentication
-        wsl_conn = snowflake.connector.connect(
-            authenticator='externalbrowser',
-            user=wsl_userName,
-            account='cvs-cvsretailprod.privatelink',  # Update with your account if different
-            warehouse='WH_RX_QUERY_RXANALYTICS_01',  # Update with your warehouse
-            database=wsl_database,
-            schema=wsl_schema,
-            role=wsl_role
-        )
-        print("✅ Connected to Snowflake successfully for WSL upload!")
-        
-        wsl_success, wsl_nchunks, wsl_nrows, _ = write_pandas(
-            wsl_conn,
-            wsl_df,
-            wsl_table_name,
-            auto_create_table=True,
-            overwrite=True  # Set to True to replace existing data
-        )
-        
-        if wsl_success:
-            print(f"✅ Success! Uploaded {wsl_nrows:,} WSL rows to {wsl_table_name}")
-        else:
-            print("❌ WSL upload failed")
-            
-    except Exception as e:
-        print(f"❌ WSL Upload Error: {str(e)}")
-        
-    finally:
-        # Close connection if it exists
-        if 'wsl_conn' in locals():
-            wsl_conn.close()
-            print("🔌 WSL connection closed.")
-# Execute Snowflake SQL Code and Insert Results
-print("🚀 Executing Snowflake SQL code and inserting data...")
-    
-try:
-        # Connect to Snowflake for SQL execution
-        sql_conn = snowflake.connector.connect(
-            authenticator='externalbrowser',
-            user=sql_userName,
-            account='cvs-cvsretailprod.privatelink',
-            warehouse='WH_RX_QUERY_RXANALYTICS_01',
-            database=sql_database,
-            schema=sql_schema,
-            role=sql_role
-        )
-        
-        print("✅ Connected to Snowflake for SQL execution!")
-        
-        # Create cursor and execute SQL
-        cursor = sql_conn.cursor()
-        
-        # Set the fiscal week variable in Snowflake session
-        print(f"🔧 Setting fiscal week variable to: {fiscal_week}")
-        cursor.execute(f"SET FISCAL_WEEK_NBR = {fiscal_week}")
-        print("✅ Fiscal week variable set in Snowflake session")
-        
-        # Execute the main SQL query
-        print(f"\n📝 Executing main analytical SQL query...")
-        print(f"Preview: {snowflake_sql_code[:100]}...")
-        
-        cursor.execute(snowflake_sql_code)
-        
-        print(f"✅ SQL query executed successfully!")
-        
-        # Get column names
-        columns = [desc[0] for desc in cursor.description]
-        
-        # Fetch all results
-        print(f"\n📤 Retrieving generated data...")
-        results = cursor.fetchall()
-        
-        if results:
-            print(f"✅ Retrieved {len(results):,} rows with {len(columns)} columns")
-            
-            # Convert to DataFrame for easier handling
-            import pandas as pd
-            result_df = pd.DataFrame(results, columns=columns)
-            
-            print(f"📋 Sample of generated data:")
-            print(result_df.head())
-            
-            # Now insert the data into the target table
-            print(f"\n📤 Inserting {len(results):,} rows into SKINNY_CVS_CENTRALIZED_LIST...")
-            
-            # Use write_pandas to insert the data
-            from snowflake.connector.pandas_tools import write_pandas
-            
-            success, nchunks, nrows, _ = write_pandas(
-                sql_conn,
-                result_df,
-                'SKINNY_CVS_CENTRALIZED_LIST',
-                auto_create_table=True,
-                overwrite=False  # Set to False to append data
-            )
-            
-            if success:
-                print(f"✅ SUCCESS! Inserted {nrows:,} rows into SKINNY_CVS_CENTRALIZED_LIST")
-                print(f"🎯 Table: DL_RX_OPERATION.RX_OPS_SANDBOX.SKINNY_CVS_CENTRALIZED_LIST")
-            else:
-                print("❌ Data insertion failed")
-        else:
-            print("⚠️  No data retrieved from SQL query")
-        
-except Exception as e:
-        print(f"❌ SQL Execution Error: {str(e)}")
-        print("💡 Check your SQL syntax and ensure all required tables exist.")
-        
-finally:
-        # Close cursor and connection
-        if 'cursor' in locals():
-            cursor.close()
-        if 'sql_conn' in locals():
-            sql_conn.close()
-            print("🔌 SQL connection closed.")
+CREATE OR REPLACE TABLE DL_RX_OPERATION.RX_OPS_SANDBOX.RETURN_TO_STOCK_NEW_DASHBOARD AS ( 
+SELECT *
+FROM DL_RX_OPERATION.RX_OPS_SANDBOX.RETURN_TO_STOCK_NEW_DASHBOARD_2 
+);
+
+-- Clean up temporary tables created by data prep procedure
+DROP TABLE IF EXISTS DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_BASE_RX;
+DROP TABLE IF EXISTS DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_FINAL_VERIFICATION;
+DROP TABLE IF EXISTS DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_RETURN_TO_STOCK;
+DROP TABLE IF EXISTS DL_RX_OPERATION.RX_OPS_SANDBOX.RTS_TEMP_FISCAL_PARAMS;
+
+RETURN 'Analysis and dashboard creation completed successfully';
+END;
+$$;
