@@ -1,37 +1,230 @@
-SELECT
-    a.STORE_ID as STORE_ID
-    ,(case when a.BUSINESS_AREA='FS' then FS_DISTRICT_NBR when a.BUSINESS_AREA='RX' then RX_DISTRICT_NBR end) as DISTRICT
-    ,(case when a.BUSINESS_AREA='FS' then FS_REGION_NBR when a.BUSINESS_AREA='RX' then RX_REGION_NBR end) as REGION
-    ,(case when a.BUSINESS_AREA='FS'  then FS_AREA_NBR when a.BUSINESS_AREA='RX' then RX_AREA_NBR end) as DIVISION  
-    ,(case when a.BUSINESS_AREA='FS' then 'NA' when a.BUSINESS_AREA='RX' then RX_MAJOR_REGION end) as Major_Region
-    ,NULL as Major_Region_No
-    ,a.YEAR_MONTH as YEAR_MONTH
-    ,a.METRIC_NAME as METRIC_NAME
-    ,a.FOLLOW_UP_REQ as FOLLOW_UP_REQ
-    ,m.TYPE as STORE_TYPE
-    ,m.METRIC_TYPE as METRIC_TYPE
-    ,m.FOCUS_AREA as FOCUS_METRIC
-    ,m.FOCUS_AREA_CD as FOCUS_METRIC_CD
-    ,m.METRIC_NAME_BI as METRIC_CALC
-    ,try_cast(m.PRIORITY as INTEGER) as PRIORITY
-    ,w.weights as Wt_Multiplier
-    ,1 * Wt_Multiplier as Points_Lost
-    ,rank() over (partition by a.STORE_ID,a.YEAR_MONTH,m.TYPE order by Points_Lost desc, try_cast(m.PRIORITY as INTEGER) asc) as PRIORITY_Rank
- 
-from
-    "APP_SOCS"."SL_SOCS_RPT"."COMPLIANCE_METRICS_FACT_DTL" a
-    join  "APP_SOCS"."SL_SOCS_RPT"."STORE_DIM_RHODY" s     on a.store_id = s.STORE_NBR
-    Join "APP_SOCS"."SL_SOCS_RPT"."FISCAL_MONTH" f  on trim(to_char(a.YEAR_MONTH)) = trim(f.FISCAL_MONTH_NBR)
-    JOIN "APP_SOCS"."SL_SOCS_RPT"."OPI_METRIC_MASTER_LOOKUP" m
-    ON a.metric_name = m.METRIC_NAME_BI
-    AND SUBSTR(TO_CHAR(a.YEAR_MONTH), 1, 4) = m.year
-    and((case when m.TYPE='Pharmacy' then 'RX' when m.TYPE='Front Store' then 'FS' END)  =a.BUSINESS_AREA)
-    join "APP_SOCS"."SL_SOCS_RPT"."OPI_METRIC_WEIGHTS" w on m.metric_id=w.metric_id and m.type=w.type  and m.year=w.year
+# Load data from Excel with required columns
+wsl_target_columns = [
+    "Store", "City", "State", "Scope", "Type", "ISD", "Project Status",
+    "New WB Running Feet", "Updated on MA", "Notes"
+]
+
+# Check for missing columns and load data
+wsl_df_preview = pd.read_excel(wsl_excel_file, sheet_name=wsl_sheet_name, nrows=0)
+wsl_found_columns = [col for col in wsl_target_columns if col in wsl_df_preview.columns]
+wsl_missing_columns = [col for col in wsl_target_columns if col not in wsl_df_preview.columns]
+
+# Show only missing columns (if any)
+if wsl_missing_columns:
+    print(f"⚠️  Missing {len(wsl_missing_columns)} columns:")
+    for col in wsl_missing_columns:
+        print(f"   - {col}")
+else:
+    print(f"✅ All {len(wsl_target_columns)} columns found!")
+
+# Load the data
+if wsl_found_columns:
+    wsl_df = pd.read_excel(wsl_excel_file, sheet_name=wsl_sheet_name, usecols=wsl_found_columns)
+    print(f"\n✅ Loaded {wsl_df.shape[0]:,} rows × {wsl_df.shape[1]} columns")
+else:
+    print("❌ No matching columns found.")
+    wsl_df = None
+# WSL Data Validation and Type Fixing
+if wsl_df is None:
+    print("❌ No WSL data available for validation.")
+else:
+    print("📊 WSL DATASET VALIDATION")
+    print("="*50)
+
+    print(f"WSL Dataset shape: {wsl_df.shape[0]:,} rows × {wsl_df.shape[1]} columns")
+    print(f"WSL Memory usage: {wsl_df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+
+    # Check for missing values in WSL data
+    wsl_missing_summary = wsl_df.isnull().sum()
+    if wsl_missing_summary.any():
+        print(f"\n⚠️  Missing values in WSL data:")
+        for col, missing_count in wsl_missing_summary[wsl_missing_summary > 0].items():
+            print(f"   {col}: {missing_count:,} missing ({missing_count/len(wsl_df)*100:.1f}%)")
+    else:
+        print(f"\n✅ No missing values found in WSL data")
+
+    # Fix data types for Snowflake compatibility
+    print(f"\n🔧 Fixing WSL data types for Snowflake compatibility...")
     
-where
-    a.METRIC_CODE in ('FCS007','FCS006','FCS008','FCS005','FCS004','FCS002','FCS001','FCS003')
-    and a.FOLLOW_UP_REQ=1
-and ((RX_IND='N' and  s.FS_AREA_NBR IN (1, 2, 3, 4, 5, 7, 8, 9, 12) and s.FS_DISTRICT_NBR NOT IN (99,98,97) and s.FS_DISTRICT_NBR IN (1, 2, 3, 4, 5, 6))
-or  (RX_IND='Y' and s.RX_AREA_NBR IN (1, 2, 3, 4, 5, 7, 8, 9, 12) and s.RX_DISTRICT_NBR NOT IN (99,98,97) and s.RX_DISTRICT_NBR IN (20, 21, 22, 23, 24, 25, 26, 27, 28, 29) ))
-and DIVISION IN (1, 2, 3, 4, 5, 7, 8, 9, 12)
-and YEAR_MONTH>=202401
+    # Handle ISD column as date - convert to string format that Snowflake recognizes
+    if 'ISD' in wsl_df.columns:
+        print("Converting ISD column to datetime and then to string format...")
+        try:
+            # First convert to datetime
+            wsl_df['ISD'] = pd.to_datetime(wsl_df['ISD'], errors='coerce')
+            # Then convert to string format that Snowflake will recognize as date
+            wsl_df['ISD'] = wsl_df['ISD'].dt.strftime('%Y-%m-%d')
+            # Replace 'NaT' string with None for missing dates
+            wsl_df['ISD'] = wsl_df['ISD'].replace('NaT', None)
+            print("✅ ISD column converted to date string format (YYYY-MM-DD)")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not convert ISD to datetime: {str(e)}")
+            wsl_df['ISD'] = wsl_df['ISD'].astype(str).replace('nan', None)
+    
+    # Handle integer columns
+    wsl_int_columns = ['STORE', 'NEW_WB_RUNNING_FEET']  # Using cleaned column names
+    for col in wsl_int_columns:
+        if col in wsl_df.columns:
+            print(f"Converting {col} column to integer...")
+            try:
+                wsl_df[col] = pd.to_numeric(wsl_df[col], errors='coerce').round().astype('Int64')
+                print(f"✅ {col} column converted to integer")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not convert {col} to integer: {str(e)}")
+                wsl_df[col] = wsl_df[col].astype(str).replace('nan', None)
+    
+    # Convert all other columns to strings to avoid mixed types
+    special_columns = ['ISD'] + wsl_int_columns
+    other_columns = [col for col in wsl_df.columns if col not in special_columns]
+    for col in other_columns:
+        # Convert to string and handle NaN values
+        wsl_df[col] = wsl_df[col].astype(str).replace('nan', None)
+    
+    # print("✅ WSL data types fixed:")
+    # print("ISD column converted to date string format (YYYY-MM-DD)")
+    # print("STORE and NEW_WB_RUNNING_FEET columns converted to integers")
+    # print("All other columns converted to strings with None for missing values")
+    
+    # Show final data types
+    print(f"\nFinal WSL data types for Snowflake:")
+    for col, dtype in wsl_df.dtypes.items():
+        print(f"   {col}: {dtype}")
+    
+    # Show sample of ISD values to verify format
+    if 'ISD' in wsl_df.columns:
+        print(f"\nSample ISD values:")
+        sample_isd = wsl_df['ISD'].dropna().head(5)
+        for i, val in enumerate(sample_isd, 1):
+            print(f"   {i}. {val}")
+    
+    print(f"\n✅ WSL data ready for Snowflake upload!")
+# WSL Snowflake Upload Configuration and Upload
+if wsl_df is None:
+    print("❌ Cannot upload WSL data - no data available.")
+else:
+    # Snowflake connection parameters for WSL data
+    wsl_database = 'DL_RX_OPERATION'
+    wsl_schema = 'RX_OPS_SANDBOX'
+    wsl_role = 'GRP-CN-SNOWFLK-PROD-RX-ANALYTICS-BI-SE'
+    wsl_table_name = 'RX_LAYOUT_CONSTRUCTION_PROJECT_TRACKER_FILE_DATA_DUMP'  # Update this with your desired table name for WSL data
+    wsl_userName = 'bhemeshwar.yeturi@cvshealth.com'
+    
+    print("Connecting to Snowflake for WSL data upload...")
+    
+    try:
+        # Connect to Snowflake using external browser authentication
+        wsl_conn = snowflake.connector.connect(
+            authenticator='externalbrowser',
+            user=wsl_userName,
+            account='cvs-cvsretailprod.privatelink',  # Update with your account if different
+            warehouse='WH_RX_QUERY_RXANALYTICS_01',  # Update with your warehouse
+            database=wsl_database,
+            schema=wsl_schema,
+            role=wsl_role
+        )
+        print("✅ Connected to Snowflake successfully for WSL upload!")
+        
+        wsl_success, wsl_nchunks, wsl_nrows, _ = write_pandas(
+            wsl_conn,
+            wsl_df,
+            wsl_table_name,
+            auto_create_table=True,
+            overwrite=True  # Set to True to replace existing data
+        )
+        
+        if wsl_success:
+            print(f"✅ Success! Uploaded {wsl_nrows:,} WSL rows to {wsl_table_name}")
+        else:
+            print("❌ WSL upload failed")
+            
+    except Exception as e:
+        print(f"❌ WSL Upload Error: {str(e)}")
+        
+    finally:
+        # Close connection if it exists
+        if 'wsl_conn' in locals():
+            wsl_conn.close()
+            print("🔌 WSL connection closed.")
+# Execute Snowflake SQL Code and Insert Results
+print("🚀 Executing Snowflake SQL code and inserting data...")
+    
+try:
+        # Connect to Snowflake for SQL execution
+        sql_conn = snowflake.connector.connect(
+            authenticator='externalbrowser',
+            user=sql_userName,
+            account='cvs-cvsretailprod.privatelink',
+            warehouse='WH_RX_QUERY_RXANALYTICS_01',
+            database=sql_database,
+            schema=sql_schema,
+            role=sql_role
+        )
+        
+        print("✅ Connected to Snowflake for SQL execution!")
+        
+        # Create cursor and execute SQL
+        cursor = sql_conn.cursor()
+        
+        # Set the fiscal week variable in Snowflake session
+        print(f"🔧 Setting fiscal week variable to: {fiscal_week}")
+        cursor.execute(f"SET FISCAL_WEEK_NBR = {fiscal_week}")
+        print("✅ Fiscal week variable set in Snowflake session")
+        
+        # Execute the main SQL query
+        print(f"\n📝 Executing main analytical SQL query...")
+        print(f"Preview: {snowflake_sql_code[:100]}...")
+        
+        cursor.execute(snowflake_sql_code)
+        
+        print(f"✅ SQL query executed successfully!")
+        
+        # Get column names
+        columns = [desc[0] for desc in cursor.description]
+        
+        # Fetch all results
+        print(f"\n📤 Retrieving generated data...")
+        results = cursor.fetchall()
+        
+        if results:
+            print(f"✅ Retrieved {len(results):,} rows with {len(columns)} columns")
+            
+            # Convert to DataFrame for easier handling
+            import pandas as pd
+            result_df = pd.DataFrame(results, columns=columns)
+            
+            print(f"📋 Sample of generated data:")
+            print(result_df.head())
+            
+            # Now insert the data into the target table
+            print(f"\n📤 Inserting {len(results):,} rows into SKINNY_CVS_CENTRALIZED_LIST...")
+            
+            # Use write_pandas to insert the data
+            from snowflake.connector.pandas_tools import write_pandas
+            
+            success, nchunks, nrows, _ = write_pandas(
+                sql_conn,
+                result_df,
+                'SKINNY_CVS_CENTRALIZED_LIST',
+                auto_create_table=True,
+                overwrite=False  # Set to False to append data
+            )
+            
+            if success:
+                print(f"✅ SUCCESS! Inserted {nrows:,} rows into SKINNY_CVS_CENTRALIZED_LIST")
+                print(f"🎯 Table: DL_RX_OPERATION.RX_OPS_SANDBOX.SKINNY_CVS_CENTRALIZED_LIST")
+            else:
+                print("❌ Data insertion failed")
+        else:
+            print("⚠️  No data retrieved from SQL query")
+        
+except Exception as e:
+        print(f"❌ SQL Execution Error: {str(e)}")
+        print("💡 Check your SQL syntax and ensure all required tables exist.")
+        
+finally:
+        # Close cursor and connection
+        if 'cursor' in locals():
+            cursor.close()
+        if 'sql_conn' in locals():
+            sql_conn.close()
+            print("🔌 SQL connection closed.")
