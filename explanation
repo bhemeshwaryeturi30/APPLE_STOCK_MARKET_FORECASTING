@@ -1,4 +1,29 @@
+DECLARE dataset_name STRING DEFAULT "edp-pdev-restrict-retstorage.edp_op1_cnsv";
 
+DECLARE table_list ARRAY<STRING>;
+DECLARE row_counts ARRAY<STRUCT<table_name STRING, row_count INT64>> DEFAULT [];
+
+-- Get all tables
+SET table_list = (
+  SELECT ARRAY_AGG(table_name)
+  FROM `edp-pdev-restrict-retstorage.edp_op1_cnsv.INFORMATION_SCHEMA.TABLES`
+);
+
+-- Loop through each table
+FOR table_name IN (
+  SELECT * FROM UNNEST(table_list)
+)
+DO
+  SET row_counts = ARRAY_CONCAT(row_counts,
+    (EXECUTE IMMEDIATE FORMAT("""
+        SELECT '%s' AS table_name, COUNT(*) AS row_count
+        FROM `%s.%s`
+    """, table_name, dataset_name, table_name))
+  );
+END FOR;
+
+-- Return results
+SELECT * FROM UNNEST(row_counts);
 select
     a.STORE_ID as STORE_ID,
     (case when a.BUSINESS_AREA='FS' then FS_DISTRICT_NBR 
