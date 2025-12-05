@@ -1,1 +1,13 @@
-
+WITH table_list AS (
+    SELECT 'TABLE_1' AS table_name UNION ALL
+    SELECT 'TABLE_2' UNION ALL
+    SELECT 'TABLE_3' UNION ALL
+    SELECT 'TABLE_4'
+),
+counts AS (
+    SELECT 
+        table_name,
+        (SELECT COUNT(*) FROM IDENTIFIER(table_name)) AS row_count
+    FROM table_list
+)
+SELECT * FROM counts;
